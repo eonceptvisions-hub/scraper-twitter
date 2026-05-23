@@ -79,6 +79,8 @@ class BusinessConceptAnalysis(BaseModel):
     saas_product_concept: SaasProductConcept = Field(description="The proposed SaaS product concept details.")
     market_analysis: MarketAnalysis = Field(description="Market and competitor analysis details.")
     target_audience: str = Field(description="The exact professional archetype / target audience willing to pay for this solution.")
+    plain_english_explanation: str = Field(description="A detailed explanation of the SaaS product concept in plain English. Explain the idea and how it works in simple, everyday terms. Use absolutely no tech jargon, coding terminology, or business/marketing buzzwords.")
+
 
 
 # --- Helper Functions ---
@@ -152,7 +154,8 @@ def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
                 direct_competitors=["ClickUp Reports", "Loom", "ReportGarden"],
                 our_unfair_moat="Direct sync with developer commits and design updates to generate technical summaries without manual writing."
             ),
-            target_audience="SaaS Product Managers & Agency Account Managers"
+            target_audience="SaaS Product Managers & Agency Account Managers",
+            plain_english_explanation="A tool that connects to your team's work accounts like Slack, GitHub, and Jira, collects what everyone did over the week, and automatically packages it into a clean, easy-to-read report you can send to your clients with one click."
         )
     elif "RBAC and user permission" in snippet:
         return BusinessConceptAnalysis(
@@ -172,7 +175,8 @@ def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
                 direct_competitors=["Cerbos", "Permit.io", "Casbin"],
                 our_unfair_moat="Instant schema generation from simple English system descriptions (e.g. 'Admins can delete, Editors can edit')."
             ),
-            target_audience="Full-Stack Developers and SaaS Tech Leads"
+            target_audience="Full-Stack Developers and SaaS Tech Leads",
+            plain_english_explanation="A pre-made security kit for software creators that lets them add user logins and custom permission settings to their systems in just a few minutes, including a simple screen where administrators can decide who is allowed to view, edit, or delete items without needing to write code."
         )
     else:
         return BusinessConceptAnalysis(
@@ -192,7 +196,8 @@ def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
                 direct_competitors=["Canva", "AdCreative.ai", "Figma"],
                 our_unfair_moat="Specifically tuned models trained on top-converting SaaS product hunt launch graphics and dark-mode templates."
             ),
-            target_audience="SaaS Solo Founders & Bootstrapped Marketers"
+            target_audience="SaaS Solo Founders & Bootstrapped Marketers",
+            plain_english_explanation="An automated design helper that takes a simple text description of a product launch or promotion and instantly generates matching social media images using your brand colors, then schedules them to be published automatically."
         )
 
 
@@ -505,7 +510,8 @@ def map_analysis_to_row(raw_tweet: str, url: str, analysis: BusinessConceptAnaly
         analysis.saas_product_concept.mvp_stack_suggestion,
         competitors_str,
         analysis.market_analysis.our_unfair_moat,
-        analysis.target_audience
+        analysis.target_audience,
+        analysis.plain_english_explanation
     ]
     return row
 
@@ -533,7 +539,8 @@ def format_google_sheet(spreadsheet):
             8: 160, # Tech Stack
             9: 180, # Competitors
             10: 280, # Unfair Moat
-            11: 180  # Target Audience
+            11: 180, # Target Audience
+            12: 320  # Plain English Explanation
         }
         
         requests_0 = [
@@ -557,7 +564,7 @@ def format_google_sheet(spreadsheet):
                             "sheetId": sheet_id_0,
                             "startRowIndex": 0,
                             "startColumnIndex": 0,
-                            "endColumnIndex": 12
+                            "endColumnIndex": 13
                         }
                     }
                 }
@@ -570,7 +577,7 @@ def format_google_sheet(spreadsheet):
                         "startRowIndex": 0,
                         "endRowIndex": 1,
                         "startColumnIndex": 0,
-                        "endColumnIndex": 12
+                        "endColumnIndex": 13
                     },
                     "cell": {
                         "userEnteredFormat": {
@@ -605,7 +612,7 @@ def format_google_sheet(spreadsheet):
                         "startRowIndex": 1,
                         "endRowIndex": 1000,
                         "startColumnIndex": 0,
-                        "endColumnIndex": 12
+                        "endColumnIndex": 13
                     },
                     "cell": {
                         "userEnteredFormat": {
@@ -879,7 +886,7 @@ def main():
                 headers = [
                     "Timestamp", "Raw Tweet", "X URL", "Feasibility (1-10)", "Rationale",
                     "Product Name", "Product Concept", "Core Features", "Tech Stack",
-                    "Competitors", "Unfair Moat", "Target Audience"
+                    "Competitors", "Unfair Moat", "Target Audience", "Plain English Explanation"
                 ]
                 worksheet.append_row(headers)
                 logger.info("Initialized Google Sheet with default columns.")
@@ -970,7 +977,7 @@ def main():
             logger.info("Dry-run: Simulating writing row data to Google Sheets.")
             logger.info(f"Rows proposed for log: {len(new_rows_to_append)}")
             for i, row in enumerate(new_rows_to_append, 1):
-                logger.info(f"Row {i}: Name='{row[5]}' | Concept='{row[6]}' | Feasibility={row[3]} | URL={row[2]}")
+                logger.info(f"Row {i}: Name='{row[5]}' | Concept='{row[6]}' | Feasibility={row[3]} | URL={row[2]} | Plain Explanation='{row[12]}'")
         else:
             try:
                 worksheet.append_rows(new_rows_to_append)
