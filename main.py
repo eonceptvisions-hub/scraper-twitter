@@ -198,29 +198,104 @@ def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
 
 # --- Core Pipeline Operations ---
 
-def get_daily_query() -> str:
+def get_or_create_query_history_sheet(spreadsheet) -> gspread.Worksheet:
     """
-    Statelessly rotates through a list of advanced Google Search queries (dorking) 
-    based on the day of the year. Allows environment override via GOOGLE_DORK_QUERY.
+    Retrieves the 'Query History' worksheet, creating it with default headers if not found.
     """
-    env_query = os.getenv("GOOGLE_DORK_QUERY")
-    if env_query:
-        logger.info(f"Using Google Dork query override from environment: '{env_query}'")
-        return env_query
-        
-    queries = [
-        'site:x.com ("takes me hours" OR "takes forever to") (SaaS OR business) -job -hiring',
-        'site:x.com ("wish there was a tool" OR "is there an app") (marketing OR automate)',
-        'site:x.com ("why is it so hard to" OR "I hate doing") (manually OR spreadsheet)',
-        'site:x.com ("better alternative to" OR "cheaper than") (subscription OR software)'
-    ]
+    try:
+        worksheet = spreadsheet.worksheet("Query History")
+    except gspread.exceptions.WorksheetNotFound:
+        # Create a 2-column sheet for Timestamp and Query
+        worksheet = spreadsheet.add_worksheet(title="Query History", rows="1000", cols="2")
+        worksheet.append_row(["Timestamp", "Generated Query"])
+        logger.info("Created 'Query History' worksheet for rotation tracking.")
+    return worksheet
+
+
+def read_recent_queries(worksheet) -> list:
+    """
+    Reads the last 30 queries logged in the 'Query History' sheet.
+    """
+    try:
+        rows = worksheet.get_all_values()
+        recent_queries = []
+        if len(rows) > 1:
+            # Column B (index 1) contains the query, skip the header row (index 0)
+            data_rows = rows[1:]
+            # Grab the last 30 entries
+            last_30_rows = data_rows[-30:]
+            for row in last_30_rows:
+                if len(row) > 1:
+                    recent_queries.append(row[1].strip())
+        return recent_queries
+    except Exception as e:
+        logger.error(f"Failed to read recent queries from history sheet: {e}")
+        return []
+
+
+def log_query(worksheet, query: str):
+    """
+    Appends a new query to the 'Query History' worksheet with the current UTC timestamp.
+    """
+    try:
+        current_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        worksheet.append_row([current_time, query])
+        logger.info(f"Successfully logged new query to history: '{query}'")
+    except Exception as e:
+        logger.error(f"Failed to log query to history sheet: {e}")
+
+
+def generate_daily_dork_query(client: genai.Client, recent_queries: list, model_name: str = "gemini-2.5-flash") -> str:
+    """
+    Asks Gemini to generate a creative, advanced Google Search dork query targeting x.com
+    to find SaaS/business complaints, ensuring it does not repeat queries from the last 30 days.
+    """
+    recent_queries_str = "\n".join([f"- {q}" for q in recent_queries]) if recent_queries else "None"
     
-    # Stateless rotation using the day of the year
-    day_of_year = datetime.now(timezone.utc).timetuple().tm_yday
-    query_index = day_of_year % len(queries)
-    selected_query = queries[query_index]
-    logger.info(f"Daily Query Rotation: Day of Year = {day_of_year} | Selected Query Index = {query_index}")
-    return selected_query
+    prompt = f"""
+    You are an expert market dorking and OSINT engineer.
+    Your job is to generate a single, highly effective Google Search dork query targeting x.com (Twitter) to find raw customer complaints, frustrations, and software tool desires.
+    
+    CRITICAL RESTRICTION: The new query must NOT be similar to or repeat any of these queries used in the last 30 days:
+    {recent_queries_str}
+    
+    Guidelines:
+    1. The query must start with 'site:x.com'.
+    2. Focus on phrases indicating frustration, friction, or desire (e.g., "takes me hours to", "wish there was a tool", "why is it so hard to", "manual spreadsheet", "takes forever to").
+    3. Target SaaS, software, startup, or business niches (e.g., marketing, finance, sales, operations, CRM, customer service, dev tools).
+    4. MUST include negative keywords to filter out jobs, hiring, newsletters, courses, templates, ads, spam, and promotions. Examples: -job -hiring -recruiting -course -newsletter -sponsor -ad -giveaway -thread.
+    5. Vary the niche (e.g., if recent queries targeted marketing or finance, target developer tooling, HR, legal, or customer support today).
+    
+    Output ONLY the query string, inside a code block or as plain text. Do not include quotes or any introductory/conversational text.
+    """
+    
+    logger.info("Generating dynamic dork query via Gemini...")
+    config = types.GenerateContentConfig(
+        temperature=0.7 # higher temperature for creative query generation
+    )
+    response = client.models.generate_content(
+        model=model_name,
+        contents=prompt,
+        config=config
+    )
+    
+    query = response.text.strip()
+    
+    # Strip markdown code block wrappers if Gemini returns them
+    if query.startswith("```"):
+        lines = query.split("\n")
+        if len(lines) > 2:
+            query = "\n".join(lines[1:-1]).strip()
+        else:
+            query = query.replace("```", "").strip()
+            
+    # Remove surrounding double quotes if present
+    if query.startswith('"') and query.endswith('"'):
+        query = query[1:-1].strip()
+        
+    logger.info(f"Generated dynamic query: '{query}'")
+    return query
+
 
 
 def clean_google_snippet(snippet: str) -> str:
@@ -265,15 +340,14 @@ def clean_google_snippet(snippet: str) -> str:
     return snippet.strip()
 
 
-def fetch_serp_results(serpapi_key: str, dry_run: bool) -> list:
+def fetch_serp_results(serpapi_key: str, query: str, dry_run: bool) -> list:
     """
-    Queries SerpApi Google Search engine with a rotating daily query.
+    Queries SerpApi Google Search engine with a dynamically generated query.
     """
     if dry_run:
         logger.info("Dry-run: Simulating SerpApi search query.")
         return MOCK_ORGANIC_RESULTS
         
-    query = get_daily_query()
     logger.info(f"Querying SerpApi with: '{query}'")
     
     url = "https://serpapi.com/search"
@@ -466,9 +540,21 @@ def main():
             logger.error("Set the required environment variables or run in dry-run mode using: DRY_RUN=true")
             sys.exit(1)
             
-    # Step 1: Open Target Google Sheet & Retrieve Existing URLs (Deduplication Check)
+    # Initialize Gemini Client if in production
+    client = None
+    if not dry_run:
+        try:
+            # The SDK automatically uses GEMINI_API_KEY from environment variables
+            client = genai.Client()
+        except Exception as e:
+            logger.error(f"Failed to initialize Gemini Client: {e}")
+            sys.exit(1)
+
+    # Step 1: Open Target Google Sheet, Retrieve Existing URLs, and Query History
     existing_urls = set()
     worksheet = None
+    recent_queries = []
+    history_worksheet = None
     
     if not dry_run:
         try:
@@ -499,19 +585,32 @@ def main():
                     "Competitors", "Unfair Moat", "Target Audience"
                 ]
                 worksheet.append_row(headers)
-                logger.info("Initialized Google Sheet with default incubation columns.")
+                logger.info("Initialized Google Sheet with default columns.")
                 
+            # Access or create Query History sheet
+            history_worksheet = get_or_create_query_history_sheet(spreadsheet)
+            recent_queries = read_recent_queries(history_worksheet)
+            
         except Exception as e:
             logger.error(f"Google Sheets setup failed: {e}")
             sys.exit(1)
             
-    # Step 2: Fetch search results from SerpApi (supporting multiple queries)
-    raw_results = fetch_serp_results(serpapi_key, dry_run)
+    # Step 2: Generate dynamic dork query via Gemini (preventing repeats from last 30 days)
+    if dry_run:
+        daily_query = 'site:x.com ("takes me hours" OR "takes forever") (SaaS OR business) -job -hiring'
+    else:
+        daily_query = generate_daily_dork_query(client, recent_queries)
+        log_query(history_worksheet, daily_query)
+        logger.info("Sleeping 15 seconds after query generation to prevent rate limit issues...")
+        time.sleep(15)
+
+    # Step 3: Fetch search results from SerpApi using dynamically generated query
+    raw_results = fetch_serp_results(serpapi_key, daily_query, dry_run)
     
-    # Step 3: Filter & clean URLs
+    # Step 4: Filter & clean URLs
     cleaned_results = clean_and_filter_results(raw_results)
     
-    # Step 4: Keep only unique, unprocessed entries
+    # Step 5: Keep only unique, unprocessed entries
     new_unprocessed_items = []
     seen_in_batch = set()
     
@@ -536,20 +635,10 @@ def main():
         logger.info(f"Slicing list to first {max_items} items (configured via MAX_ITEMS_PER_RUN).")
         new_unprocessed_items = new_unprocessed_items[:max_items]
         
-    # Step 5: Process through AI Brain
+    # Step 6: Process through AI Brain
     new_rows_to_append = []
     
     if new_unprocessed_items:
-        # Initialize Gemini Client if in production
-        client = None
-        if not dry_run:
-            try:
-                # The SDK automatically uses GEMINI_API_KEY from environment variables
-                client = genai.Client()
-            except Exception as e:
-                logger.error(f"Failed to initialize Gemini Client: {e}")
-                sys.exit(1)
-                
         for i, item in enumerate(new_unprocessed_items, 1):
             snippet = item["snippet"]
             url = item["url"]
@@ -578,7 +667,7 @@ def main():
                     time.sleep(15)
                 continue
                 
-    # Step 6: Log unique results in a single optimized batch write
+    # Step 7: Log unique results in a single optimized batch write
     if new_rows_to_append:
         if dry_run:
             logger.info("Dry-run: Simulating writing row data to Google Sheets.")
@@ -596,6 +685,7 @@ def main():
         logger.info("No new unique concepts were generated. Sheets are up to date!")
         
     logger.info("SaaS Ideation & Research pipeline execution finished.")
+
 
 
 if __name__ == "__main__":
