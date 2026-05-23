@@ -1,102 +1,108 @@
-# 🚀 Automated X (Twitter) Problem Scraper & Google Sheet Logger
+# 🚀 Autonomous AI-Driven SaaS Ideation & Research Pipeline
 
-An automated, serverless Python pipeline that extracts target customer pain points from X (formerly Twitter) via Google Search results (using **SerpApi**) and logs them directly into a **Google Sheet** for human triage and review.
+An autonomous, serverless pipeline that extracts target customer pain points from X (formerly Twitter) via Google Search results, evaluates them through an advanced **Gemini AI Business Agent** with real-time **Google Search Grounding**, and outputs ready-to-build, validated business concepts directly into a structured **Google Sheet**.
 
-The pipeline is fully automated using **GitHub Actions** to run once a day, and includes a smart deduplication mechanism to ensure no single complaint is logged twice.
+This pipeline is fully scheduled to run daily at 8:00 AM UTC via **GitHub Actions** and uses a smart deduplication mechanism to ensure no single complaint is processed or logged twice.
 
 ---
 
-## 🏛️ System Architecture
+## 🏛️ System Architecture & Workflow
 
 ```mermaid
 graph TD
     Cron[GitHub Actions Cron <br> Daily 8:00 AM UTC] -->|Triggers| Run[main.py Execution]
     Dispatch[Manual Action Trigger] -->|Triggers| Run
-    Run -->|Queries Google SERP| Serp[SerpApi API]
-    Serp -->|Returns snippets & links| Run
-    Run -->|Validates & Cleans URLs| Run
-    Run -->|Checks for Duplicates| Sheet[(Google Sheet)]
-    Run -->|Appends New Complaints| Sheet
+    Run -->|Queries Google SERP for pain points| Serp[SerpApi API]
+    Serp -->|Returns raw tweets & links| Run
+    Run -->|Filters & standardizes URLs| Run
+    Run -->|Checks for Duplicates| SheetCheck{Already in Sheet?}
+    SheetCheck -->|Yes| Skip[Skip Processing]
+    SheetCheck -->|No| Gemini[Gemini 2.5 Flash Agent]
+    Gemini -->|Search Grounding Tool| CompSearch[Research Competitors & Viability]
+    CompSearch -->|Returns market data| Gemini
+    Gemini -->|Validates via Pydantic Schema| Structure[Structured Business Analysis]
+    Structure -->|Appends Flat Rows| Sheet[(Rich Google Sheet)]
 ```
 
 ---
 
-## 🛠️ Tech Stack & Requirements
-* **Language:** Python 3.9+
-* **Scraping Engine:** SerpApi (Google Search Engine)
-* **Storage & Integration:** `gspread` & `google-auth` (Google Sheets API)
-* **Automation Platform:** GitHub Actions (cron scheduling & secure secrets management)
+## 📊 Google Sheets Layout
+
+The pipeline outputs structured rows mapping to these exact 12 columns:
+
+1. **Timestamp:** Date and time of analysis (UTC).
+2. **Raw Tweet:** The original tweet text summarizing the complaint.
+3. **X URL:** Clickable link pointing directly to the source post on X.
+4. **Feasibility (1-10):** AI-assessed doability of solving this in the modern world.
+5. **Rationale:** A 2-sentence breakdown of the technical or market friction.
+6. **Product Name:** A creative, catchy proposed name for the SaaS solution.
+7. **Product Concept:** A clear one-liner summary of the SaaS product concept.
+8. **Core Features:** A comma-separated list of top 3 MVP features.
+9. **Tech Stack:** Recommended tech stack to build the MVP (e.g. React, Firebase, OpenAI API).
+10. **Competitors:** Existing players and products operating in the space.
+11. **Unfair Moat:** An analysis of how this concept differentiates and wins against incumbents.
+12. **Target Audience:** The specific professional archetype / target market willing to pay.
 
 ---
 
-## 🚀 Setup & Installation
+## 🛠️ Setup & Installation
 
 ### Step 1: Obtain a SerpApi Key
-1. Go to [SerpApi](https://serpapi.com/) and register for a free account.
-2. The free tier provides **100 searches/month**, which is plenty for daily automated sweeps.
-3. Locate your API key on your dashboard (we will use this as `SERPAPI_KEY` later).
+1. Register for an account at [SerpApi.com](https://serpapi.com/).
+2. Grab your API Key from the dashboard (we'll save this as `SERPAPI_KEY`).
 
 ---
 
-### Step 2: Configure Google Cloud & Service Account
-To allow the Python script to write to your Google Sheet without prompt screens or user logins, you must configure a Google Service Account:
+### Step 2: Get a Gemini API Key
+1. Go to [Google AI Studio](https://aistudio.google.com/).
+2. Sign in and click **Create API Key**.
+3. Copy your API Key (we'll save this as `GEMINI_API_KEY`).
 
-1. **Go to GCP Console**: Navigate to the [Google Cloud Console](https://console.cloud.google.com/).
-2. **Create Project**: Click on the project dropdown, choose **New Project**, name it (e.g. `X-Scraper-Logger`), and click **Create**.
+---
+
+### Step 3: Configure Google Cloud & Service Account
+To allow the Python script to write to your Google Sheet without prompt screens or user logins:
+
+1. **Open GCP Console**: Go to the [Google Cloud Console](https://console.cloud.google.com/).
+2. **Create Project**: Click the project dropdown, choose **New Project**, name it `SaaS-Incubator`, and click **Create**.
 3. **Enable APIs**:
-   * Search for **Google Sheets API** in the search bar at the top, click it, and click **Enable**.
-   * Search for **Google Drive API** in the search bar, click it, and click **Enable**.
+   * Search for **Google Sheets API** in the top search bar and click **Enable**.
+   * Search for **Google Drive API** in the top search bar and click **Enable**.
 4. **Create Service Account**:
-   * Go to **IAM & Admin** > **Service Accounts**.
+   * Navigate to **IAM & Admin** > **Service Accounts**.
    * Click **Create Service Account** at the top.
-   * Provide a name (e.g., `sheet-logger-service-account`), and click **Create and Continue**.
-   * Skip optional role configurations and click **Done**.
-5. **Create & Download Key**:
-   * In the Service Accounts list, click on your newly created service account email.
-   * Navigate to the **Keys** tab.
+   * Name it `sheets-logger` and click **Create and Continue**, then click **Done**.
+5. **Generate JSON Key**:
+   * In the Service Accounts list, click on the email of the service account you just created.
+   * Go to the **Keys** tab at the top.
    * Click **Add Key** > **Create new key**.
-   * Select **JSON** as the key type and click **Create**.
-   * Save the downloaded `.json` credentials file securely. This entire JSON structure will be your `GCP_SERVICE_ACCOUNT_JSON` secret.
-6. **Note the Service Account Email**:
-   * Note the service account email (usually looks like `sheet-logger-service-account@<project-id>.iam.gserviceaccount.com`). You will need this in the next step.
+   * Select **JSON** and click **Create**. A `.json` file containing your credentials will download.
+   * Open this file in any text editor, select all, and copy it. This is your `GCP_SERVICE_ACCOUNT_JSON`.
+6. **Share your Sheet**:
+   * Copy the email address of the service account you created.
+   * Open your Google Sheet, click **Share** in the top right.
+   * Paste the service account email, set the role to **Editor**, and click **Share**.
 
 ---
 
-### Step 3: Setup the Google Sheet
-1. Create a new Google Sheet or open an existing one.
-2. **Extract Sheet ID**: Look at the spreadsheet URL. Copy the long random string of letters and numbers between `/d/` and `/edit` (e.g., `https://docs.google.com/spreadsheets/d/1A2B3C4D5E.../edit`). This is your `GOOGLE_SHEET_KEY`.
-3. **Share Sheet with Service Account**:
-   * Click the blue **Share** button in the top-right corner of your Google Sheet.
-   * Paste the **Service Account email** (noted in Step 2.6) in the email field.
-   * Make sure the role is set to **Editor**.
-   * Uncheck "Notify people" and click **Share**.
-4. **Columns Layout**:
-   * The script automatically initializes headers on run if your worksheet is empty.
-   * The sheet layout is structured as follows:
-     * **Column A:** `Complaint Snippet` (the Google search text snippet outlining the user's SaaS complaint)
-     * **Column B:** `X/Twitter URL` (the source link pointing to the complaint on X)
-     * **Column C:** `Date Logged` (UTC timestamp when the pipeline wrote the row)
+### Step 4: Extract Google Sheet Key
+Look at the URL of your Google Sheet. Copy the long random string of letters and numbers between `/d/` and `/edit`. This is your `GOOGLE_SHEET_KEY`.
 
 ---
 
-### Step 4: Configure GitHub Secrets
-To run this pipeline daily in GitHub Actions, you must store your secret keys securely in GitHub:
-
-1. On your GitHub repository page, click on **Settings** in the top navigation bar.
-2. In the left sidebar, click **Secrets and variables** > **Actions**.
-3. Under **Repository secrets**, click **New repository secret** for each of the following:
+### Step 5: Configure GitHub Secrets
+Go to your repository settings page on GitHub, click **Secrets and variables** > **Actions**, and create four **Repository secrets**:
 
 | Secret Name | Value |
 | :--- | :--- |
 | `SERPAPI_KEY` | Your SerpApi API Key (Step 1) |
-| `GCP_SERVICE_ACCOUNT_JSON` | The entire content of your Google Cloud Service Account JSON file (Step 2.5) |
-| `GOOGLE_SHEET_KEY` | Your Google Spreadsheet ID / Key (Step 3.2) |
+| `GEMINI_API_KEY` | Your Google Gemini API Key (Step 2) |
+| `GCP_SERVICE_ACCOUNT_JSON` | The complete raw JSON string from your Service Account key file (Step 3.5) |
+| `GOOGLE_SHEET_KEY` | Your Google Spreadsheet ID / Key (Step 4) |
 
 ---
 
-## 💻 Local Execution & Testing
-
-You can run the script locally to verify configurations or test search queries before deploying it to GitHub Actions.
+## 💻 Local Testing & Verification
 
 ### 1. Install dependencies
 ```bash
@@ -104,7 +110,7 @@ pip install -r requirements.txt
 ```
 
 ### 2. Verify with Dry-Run Mode
-Setting `DRY_RUN=true` will bypass live calls to SerpApi and Google Sheets, simulating the pipeline workflow using pre-packaged mock data. This is perfect for verifying the environment is set up properly.
+Setting `DRY_RUN=true` will bypass live API calls to SerpApi, Gemini, and Google Sheets, simulating the pipeline workflow using pre-packaged mock data and matching Pydantic formats.
 
 * **On Windows (PowerShell):**
   ```powershell
@@ -122,6 +128,7 @@ To run a live scrape and update your Google Sheet from your local machine, expor
 * **On Windows (PowerShell):**
   ```powershell
   $env:SERPAPI_KEY="your_serpapi_key"
+  $env:GEMINI_API_KEY="your_gemini_api_key"
   $env:GCP_SERVICE_ACCOUNT_JSON='{"type": "service_account", ...}'
   $env:GOOGLE_SHEET_KEY="your_google_sheet_id"
   python main.py
@@ -129,14 +136,8 @@ To run a live scrape and update your Google Sheet from your local machine, expor
 * **On macOS / Linux:**
   ```bash
   export SERPAPI_KEY="your_serpapi_key"
+  export GEMINI_API_KEY="your_gemini_api_key"
   export GCP_SERVICE_ACCOUNT_JSON='{"type": "service_account", ...}'
   export GOOGLE_SHEET_KEY="your_google_sheet_id"
   python main.py
   ```
-
----
-
-## 🤖 GitHub Automation Workflow
-The daily automation is managed by `.github/workflows/daily_scrape.yml`. 
-* **Schedule:** Runs every day at **8:00 AM UTC** (`0 8 * * *`).
-* **Manual Dispatch:** Can be manually triggered at any time by navigating to your repository's **Actions** tab, selecting **Daily X Problem Scraper** in the sidebar, and clicking **Run workflow**.
