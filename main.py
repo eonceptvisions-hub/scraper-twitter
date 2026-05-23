@@ -15,6 +15,7 @@ Requirements:
 
 import os
 import sys
+import time
 import json
 import logging
 from datetime import datetime, timezone
@@ -281,36 +282,71 @@ def clean_and_filter_results(results: list) -> list:
 
 def analyze_with_gemini(snippet: str, client: genai.Client, model_name: str = "gemini-2.5-flash") -> BusinessConceptAnalysis:
     """
-    Leverages Gemini with Search Grounding to evaluate market feasibility and generate Pydantic outputs.
+    Leverages Gemini in a split-call architecture to bypass tool/JSON incompatibility and rate limits:
+    1. Research Stage: Call Gemini with Google Search tool to gather competitor and market insights.
+    2. Sleep Throttle: Sleep 15 seconds to respect the 5 RPM rate limit.
+    3. Structuring Stage: Call Gemini with Pydantic schema using the research summary to format the final JSON object.
     """
-    prompt = f"""
-    You are an elite Venture Capitalist and SaaS Product Architect.
+    # 1. Research Stage
+    research_prompt = f"""
+    You are an elite market researcher.
     
     We have extracted the following raw user pain point/complaint from X (Twitter):
     "{snippet}"
     
-    Using your Google Search tool:
-    1. Research the current market to determine if this is a genuine, unsolved problem in the modern world.
-    2. Look up existing products, startups, or solutions that address this problem.
-    3. Evaluate the technical and market feasibility of building a SaaS solution.
-    4. Devise a polished SaaS product or feature concept to solve it, detailing its name, one-liner, core MVP stack, direct competitors, and our unfair moat.
+    Using Google Search, research the market to identify:
+    1. If this is a genuine, solvable problem in the modern world.
+    2. Direct competitors or existing SaaS tools that address this.
+    3. The technical feasibility of building a solution.
+    4. An unfair moat we could build to beat incumbents.
+    
+    Provide your analysis as a comprehensive, well-structured text summary.
     """
     
-    # Configure request to enable Google Search grounding and enforce structured Pydantic schema
-    config = types.GenerateContentConfig(
+    logger.info("Step 1: Running Google Search Grounding research...")
+    research_config = types.GenerateContentConfig(
         tools=[types.Tool(google_search=types.GoogleSearch())],
+        temperature=0.2
+    )
+    
+    research_response = client.models.generate_content(
+        model=model_name,
+        contents=research_prompt,
+        config=research_config
+    )
+    research_summary = research_response.text
+    
+    # Sleep to respect rate limits (5 RPM limit = 12 seconds minimum between requests)
+    logger.info("Respecting rate limits: sleeping 15 seconds before structural analysis...")
+    time.sleep(15)
+    
+    # 2. Structuring Stage
+    structure_prompt = f"""
+    You are an elite Venture Capitalist and SaaS Product Architect.
+    
+    Raw User Pain Point:
+    "{snippet}"
+    
+    Market Research Summary:
+    {research_summary}
+    
+    Based on this research, formulate a polished business concept. Output exactly matching the required JSON schema.
+    """
+    
+    logger.info("Step 2: Structuring business concept with Pydantic schema...")
+    structure_config = types.GenerateContentConfig(
         response_mime_type="application/json",
         response_schema=BusinessConceptAnalysis,
-        temperature=0.2, # low temperature for high reliability in analysis
+        temperature=0.2
     )
     
-    response = client.models.generate_content(
+    structure_response = client.models.generate_content(
         model=model_name,
-        contents=prompt,
-        config=config
+        contents=structure_prompt,
+        config=structure_config
     )
     
-    return response.parsed
+    return structure_response.parsed
 
 
 def map_analysis_to_row(raw_tweet: str, url: str, analysis: BusinessConceptAnalysis) -> list:
@@ -349,6 +385,7 @@ def main():
     gemini_key = os.getenv("GEMINI_API_KEY")
     gcp_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
     sheet_key = os.getenv("GOOGLE_SHEET_KEY")
+    max_items = int(os.getenv("MAX_ITEMS_PER_RUN", "5"))
     
     if dry_run:
         logger.info("=== RUNNING IN DRY RUN / SIMULATION MODE ===")
@@ -434,6 +471,11 @@ def main():
         
     logger.info(f"Found {len(new_unprocessed_items)} new unique inputs to evaluate.")
     
+    # Slice the unprocessed list to stay under rate limits and save costs
+    if len(new_unprocessed_items) > max_items:
+        logger.info(f"Slicing list to first {max_items} items (configured via MAX_ITEMS_PER_RUN).")
+        new_unprocessed_items = new_unprocessed_items[:max_items]
+        
     # Step 5: Process through AI Brain
     new_rows_to_append = []
     
@@ -463,9 +505,17 @@ def main():
                 new_rows_to_append.append(row_data)
                 logger.info(f"Analysis successful for {url}. Concept Generated: '{analysis.saas_product_concept.name}'")
                 
+                # Sleep to prevent overlap with the next item's first API call
+                if i < len(new_unprocessed_items):
+                    logger.info("Respecting rate limits: sleeping 15 seconds before processing next item...")
+                    time.sleep(15)
+                    
             except Exception as e:
                 # Graceful try-except wrap around individual runs to prevent pipeline crash
                 logger.error(f"Graceful Skip: Failed to analyze pain point from {url} due to error: {e}")
+                # Even if it fails, sleep to reset rate limits before next loop
+                if i < len(new_unprocessed_items):
+                    time.sleep(15)
                 continue
                 
     # Step 6: Log unique results in a single optimized batch write
