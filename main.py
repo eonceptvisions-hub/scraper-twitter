@@ -510,6 +510,303 @@ def map_analysis_to_row(raw_tweet: str, url: str, analysis: BusinessConceptAnaly
     return row
 
 
+def format_google_sheet(spreadsheet):
+    """
+    Applies professional styling, freezes header rows, enables basic filtering, 
+    and configures text wrapping and custom column dimensions for both worksheets.
+    """
+    logger.info("Applying premium formatting to Google Sheets...")
+    try:
+        # --- 1. Format Worksheet 1 (SaaS Incubation Sheet) ---
+        worksheet_0 = spreadsheet.get_worksheet(0)
+        sheet_id_0 = worksheet_0.id
+        
+        column_widths_0 = {
+            0: 160, # Timestamp
+            1: 280, # Raw Tweet
+            2: 180, # X URL
+            3: 100, # Feasibility
+            4: 280, # Rationale
+            5: 140, # Product Name
+            6: 280, # Product Concept
+            7: 220, # Core Features
+            8: 160, # Tech Stack
+            9: 180, # Competitors
+            10: 280, # Unfair Moat
+            11: 180  # Target Audience
+        }
+        
+        requests_0 = [
+            # Freeze the first row
+            {
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": sheet_id_0,
+                        "gridProperties": {
+                            "frozenRowCount": 1
+                        }
+                    },
+                    "fields": "gridProperties.frozenRowCount"
+                }
+            },
+            # Set basic filter across headers
+            {
+                "setBasicFilter": {
+                    "filter": {
+                        "range": {
+                            "sheetId": sheet_id_0,
+                            "startRowIndex": 0,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": 12
+                        }
+                    }
+                }
+            },
+            # Style header row (sleek dark slate, white bold text, centered, font: Inter)
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id_0,
+                        "startRowIndex": 0,
+                        "endRowIndex": 1,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": 12
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": {
+                                "red": 0.098,  # #182232
+                                "green": 0.137,
+                                "blue": 0.200
+                            },
+                            "textFormat": {
+                                "foregroundColor": {
+                                    "red": 1.0,
+                                    "green": 1.0,
+                                    "blue": 1.0
+                                },
+                                "fontFamily": "Inter",
+                                "fontSize": 11,
+                                "bold": True
+                            },
+                            "horizontalAlignment": "CENTER",
+                            "verticalAlignment": "MIDDLE",
+                            "wrapStrategy": "WRAP"
+                        }
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)"
+                }
+            },
+            # Style data cells (font: Inter, size: 10, vertical align: middle, text wrap: WRAP)
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id_0,
+                        "startRowIndex": 1,
+                        "endRowIndex": 1000,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": 12
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "textFormat": {
+                                "fontFamily": "Inter",
+                                "fontSize": 10
+                            },
+                            "verticalAlignment": "MIDDLE",
+                            "wrapStrategy": "WRAP"
+                        }
+                    },
+                    "fields": "userEnteredFormat(textFormat,verticalAlignment,wrapStrategy)"
+                }
+            },
+            # Center align and bold Feasibility score
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id_0,
+                        "startRowIndex": 1,
+                        "endRowIndex": 1000,
+                        "startColumnIndex": 3,
+                        "endColumnIndex": 4
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "textFormat": {
+                                "bold": True
+                            },
+                            "horizontalAlignment": "CENTER"
+                        }
+                    },
+                    "fields": "userEnteredFormat(textFormat.bold,horizontalAlignment)"
+                }
+            },
+            # Bold Product Name
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id_0,
+                        "startRowIndex": 1,
+                        "endRowIndex": 1000,
+                        "startColumnIndex": 5,
+                        "endColumnIndex": 6
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "textFormat": {
+                                "bold": True
+                            }
+                        }
+                    },
+                    "fields": "userEnteredFormat(textFormat.bold)"
+                }
+            }
+        ]
+        
+        # Add column widths to requests_0
+        for col_idx, width in column_widths_0.items():
+            requests_0.append({
+                "updateDimensionProperties": {
+                    "range": {
+                        "sheetId": sheet_id_0,
+                        "dimension": "COLUMNS",
+                        "startIndex": col_idx,
+                        "endIndex": col_idx + 1
+                    },
+                    "properties": {
+                        "pixelSize": width
+                    },
+                    "fields": "pixelSize"
+                }
+            })
+            
+        # Execute batch update for sheet 1
+        spreadsheet.batch_update({"requests": requests_0})
+        logger.info("Formatted primary SaaS Incubation worksheet.")
+        
+        # --- 2. Format Worksheet 2 (Query History Sheet) ---
+        try:
+            worksheet_1 = spreadsheet.worksheet("Query History")
+            sheet_id_1 = worksheet_1.id
+            
+            column_widths_1 = {
+                0: 160, # Timestamp
+                1: 540  # Generated Query
+            }
+            
+            requests_1 = [
+                # Freeze first row
+                {
+                    "updateSheetProperties": {
+                        "properties": {
+                            "sheetId": sheet_id_1,
+                            "gridProperties": {
+                                "frozenRowCount": 1
+                            }
+                        },
+                        "fields": "gridProperties.frozenRowCount"
+                    }
+                },
+                # Set basic filter
+                {
+                    "setBasicFilter": {
+                        "filter": {
+                            "range": {
+                                "sheetId": sheet_id_1,
+                                "startRowIndex": 0,
+                                "startColumnIndex": 0,
+                                "endColumnIndex": 2
+                            }
+                        }
+                    }
+                },
+                # Style header row (grey background, white bold text, centered)
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": sheet_id_1,
+                            "startRowIndex": 0,
+                            "endRowIndex": 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": 2
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": {
+                                    "red": 0.200,  # #334155
+                                    "green": 0.255,
+                                    "blue": 0.333
+                                },
+                                "textFormat": {
+                                    "foregroundColor": {
+                                        "red": 1.0,
+                                        "green": 1.0,
+                                        "blue": 1.0
+                                    },
+                                    "fontFamily": "Inter",
+                                    "fontSize": 11,
+                                    "bold": True
+                                },
+                                "horizontalAlignment": "CENTER",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "WRAP"
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)"
+                    }
+                },
+                # Style data cells (font: Inter, size: 10, wrap: WRAP)
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": sheet_id_1,
+                            "startRowIndex": 1,
+                            "endRowIndex": 1000,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": 2
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "textFormat": {
+                                    "fontFamily": "Inter",
+                                    "fontSize": 10
+                                },
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "WRAP"
+                            }
+                        },
+                        "fields": "userEnteredFormat(textFormat,verticalAlignment,wrapStrategy)"
+                    }
+                }
+            ]
+            
+            # Add column widths to requests_1
+            for col_idx, width in column_widths_1.items():
+                requests_1.append({
+                    "updateDimensionProperties": {
+                        "range": {
+                            "sheetId": sheet_id_1,
+                            "dimension": "COLUMNS",
+                            "startIndex": col_idx,
+                            "endIndex": col_idx + 1
+                        },
+                        "properties": {
+                            "pixelSize": width
+                        },
+                        "fields": "pixelSize"
+                    }
+                })
+                
+            spreadsheet.batch_update({"requests": requests_1})
+            logger.info("Formatted 'Query History' worksheet.")
+            
+        except gspread.exceptions.WorksheetNotFound:
+            pass
+            
+    except Exception as e:
+        logger.error(f"Failed to apply Google Sheets formatting: {e}")
+
+
 def main():
     logger.info("Initializing Autonomous AI SaaS Ideation Pipeline...")
     
@@ -683,6 +980,10 @@ def main():
                 sys.exit(1)
     else:
         logger.info("No new unique concepts were generated. Sheets are up to date!")
+        
+    # Format Google Sheet to look premium
+    if not dry_run:
+        format_google_sheet(spreadsheet)
         
     logger.info("SaaS Ideation & Research pipeline execution finished.")
 
