@@ -17,6 +17,7 @@ import os
 import sys
 import time
 import json
+import re
 import logging
 from datetime import datetime, timezone
 import urllib.parse
@@ -197,62 +198,115 @@ def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
 
 # --- Core Pipeline Operations ---
 
-def fetch_serp_results(serpapi_key: str, dry_run: bool) -> list:
+def get_daily_query() -> str:
     """
-    Queries SerpApi Google Search engine with multiple queries to find target SaaS pain points.
+    Statelessly rotates through a list of advanced Google Search queries (dorking) 
+    based on the day of the year. Allows environment override via GOOGLE_DORK_QUERY.
     """
-    if dry_run:
-        logger.info("Dry-run: Simulating multiple SerpApi search queries.")
-        return MOCK_ORGANIC_RESULTS
+    env_query = os.getenv("GOOGLE_DORK_QUERY")
+    if env_query:
+        logger.info(f"Using Google Dork query override from environment: '{env_query}'")
+        return env_query
         
     queries = [
-        'site:x.com "takes me hours to" SaaS',
-        'site:x.com "wish there was a tool" business'
+        'site:x.com ("takes me hours" OR "takes forever to") (SaaS OR business) -job -hiring',
+        'site:x.com ("wish there was a tool" OR "is there an app") (marketing OR automate)',
+        'site:x.com ("why is it so hard to" OR "I hate doing") (manually OR spreadsheet)',
+        'site:x.com ("better alternative to" OR "cheaper than") (subscription OR software)'
     ]
     
-    all_results = []
-    seen_links = set()
-    
-    for query in queries:
-        logger.info(f"Querying SerpApi with query: '{query}'")
-        url = "https://serpapi.com/search"
-        params = {
-            "engine": "google",
-            "q": query,
-            "api_key": serpapi_key,
-            "hl": "en",
-            "gl": "us",
-            "num": 50  # 50 per query (max 100 total) to save search credits
-        }
-        try:
-            response = requests.get(url, params=params, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-            
-            if "error" in data:
-                logger.error(f"SerpApi returned an error for query '{query}': {data['error']}")
-                continue
+    # Stateless rotation using the day of the year
+    day_of_year = datetime.now(timezone.utc).timetuple().tm_yday
+    query_index = day_of_year % len(queries)
+    selected_query = queries[query_index]
+    logger.info(f"Daily Query Rotation: Day of Year = {day_of_year} | Selected Query Index = {query_index}")
+    return selected_query
+
+
+def clean_google_snippet(snippet: str) -> str:
+    """
+    Cleans Google Search snippet texts by removing prepended dates, relative times (e.g. '3 days ago'),
+    leading/trailing ellipses ('...' or '…'), and redundant whitespaces.
+    """
+    if not snippet:
+        return ""
+        
+    # Match common Google date/time prefixes followed by ellipses
+    # Examples:
+    # - "May 12, 2024 ... "
+    # - "3 days ago ... "
+    # - "12h ago ... "
+    # - "2024-05-12 ... "
+    date_pattern = r"^((?:[A-Za-z]{3}\s+\d{1,2},\s+\d{4})|(?:\d{1,2}\s+[A-Za-z]{3,}\s+\d{4})|(?:\d+\s+(?:days?|hours?|mins?|minutes?|secs?|seconds?)\s+ago)|(?:\d{4}-\d{2}-\d{2})|(?:\d{2}/\d{2}/\d{4}))\s*(?:\.{3,}|…)\s*(.*)"
+    prefix_match = re.match(date_pattern, snippet)
+    if prefix_match:
+        snippet = prefix_match.group(2)
+    else:
+        # Fallback to catch any short prefix (up to 30 characters) followed by ellipses
+        # if it contains date indicators (digits, months, or 'ago')
+        fallback_match = re.match(r"^(.{1,30}?)(?:\.{3,}|…)\s*(.*)", snippet)
+        if fallback_match:
+            prefix = fallback_match.group(1).lower()
+            if any(char.isdigit() for char in prefix) or "ago" in prefix or any(m in prefix for m in ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]):
+                snippet = fallback_match.group(2)
                 
-            organic = data.get("organic_results", [])
-            logger.info(f"SerpApi returned {len(organic)} results for query '{query}'.")
+    # Strip leading/trailing ellipses or dashes and spaces
+    snippet = snippet.strip()
+    if snippet.startswith("..."):
+        snippet = snippet[3:]
+    elif snippet.startswith("…"):
+        snippet = snippet[1:]
+        
+    if snippet.endswith("..."):
+        snippet = snippet[:-3]
+    elif snippet.endswith("…"):
+        snippet = snippet[:-1]
+        
+    return snippet.strip()
+
+
+def fetch_serp_results(serpapi_key: str, dry_run: bool) -> list:
+    """
+    Queries SerpApi Google Search engine with a rotating daily query.
+    """
+    if dry_run:
+        logger.info("Dry-run: Simulating SerpApi search query.")
+        return MOCK_ORGANIC_RESULTS
+        
+    query = get_daily_query()
+    logger.info(f"Querying SerpApi with: '{query}'")
+    
+    url = "https://serpapi.com/search"
+    params = {
+        "engine": "google",
+        "q": query,
+        "api_key": serpapi_key,
+        "hl": "en",
+        "gl": "us",
+        "num": 100  # Pull up to 100 results to maximize efficiency per call
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        
+        if "error" in data:
+            logger.error(f"SerpApi returned an error: {data['error']}")
+            return []
             
-            for item in organic:
-                link = item.get("link", "").strip()
-                if link and link not in seen_links:
-                    seen_links.add(link)
-                    all_results.append(item)
-                    
-        except Exception as e:
-            logger.error(f"Failed to fetch SerpApi results for query '{query}': {e}")
-            continue
-            
-    logger.info(f"Total unique search results collected: {len(all_results)}")
-    return all_results
+        organic_results = data.get("organic_results", [])
+        logger.info(f"SerpApi returned {len(organic_results)} organic results.")
+        return organic_results
+    except Exception as e:
+        logger.error(f"Failed to query SerpApi: {e}")
+        return []
 
 
 def clean_and_filter_results(results: list) -> list:
     """
-    Cleans search results by dropping entries without valid X/Twitter URLs or snippets.
+    Cleans search results by dropping entries without valid X/Twitter URLs,
+    and strips dates and ellipses from text snippets.
     """
     cleaned = []
     for item in results:
@@ -271,9 +325,15 @@ def clean_and_filter_results(results: list) -> list:
             logger.warning(f"Snippet is empty for URL: {url}. Skipping.")
             continue
             
+        # Clean date prefixes and trailing ellipses
+        cleaned_snippet = clean_google_snippet(snippet)
+        if not cleaned_snippet:
+            logger.warning(f"Snippet became empty after cleaning for URL: {url}. Skipping.")
+            continue
+            
         cleaned.append({
             "url": url,
-            "snippet": snippet
+            "snippet": cleaned_snippet
         })
         
     logger.info(f"Filtered results: {len(cleaned)} out of {len(results)} search results kept.")
