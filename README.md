@@ -28,7 +28,7 @@ graph TD
 
 ## 📊 Google Sheets Layout
 
-The pipeline outputs structured rows mapping to these exact 12 columns:
+The pipeline outputs structured rows mapping to these exact 13 columns:
 
 1. **Timestamp:** Date and time of analysis (UTC).
 2. **Raw Tweet:** The original tweet text summarizing the complaint.
@@ -42,6 +42,7 @@ The pipeline outputs structured rows mapping to these exact 12 columns:
 10. **Competitors:** Existing players and products operating in the space.
 11. **Unfair Moat:** An analysis of how this concept differentiates and wins against incumbents.
 12. **Target Audience:** The specific professional archetype / target market willing to pay.
+13. **Plain English Explanation:** A detailed, jargon-free explanation of the SaaS product concept and how it works in plain, simple terms.
 
 ---
 
