@@ -79,7 +79,7 @@ class BusinessConceptAnalysis(BaseModel):
     saas_product_concept: SaasProductConcept = Field(description="The proposed SaaS product concept details.")
     market_analysis: MarketAnalysis = Field(description="Market and competitor analysis details.")
     target_audience: str = Field(description="The exact professional archetype / target audience willing to pay for this solution.")
-    plain_english_explanation: str = Field(description="A detailed explanation of the SaaS product concept in plain English. Explain the idea and how it works in simple, everyday terms. Use absolutely no tech jargon, coding terminology, or business/marketing buzzwords.")
+    plain_english_explanation: str = Field(description="A detailed explanation of the SaaS product concept in plain English. Explain the idea and how it works in simple, everyday terms. Use absolu[...]
 
 
 
@@ -139,7 +139,7 @@ def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
     if "compile weekly status reports" in snippet:
         return BusinessConceptAnalysis(
             feasibility_score=8,
-            feasibility_rationale="Highly feasible because weekly reports rely on structured data sources like Jira/GitHub APIs. The friction lies in building robust API integrations and custom layout templates.",
+            feasibility_rationale="Highly feasible because weekly reports rely on structured data sources like Jira/GitHub APIs. The friction lies in building robust API integrations and custom l[...]
             saas_product_concept=SaasProductConcept(
                 name="ReportFlow AI",
                 one_liner="Automate client reporting by compiling Jira, GitHub, and Slack updates into gorgeous PDFs in one click.",
@@ -155,12 +155,12 @@ def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
                 our_unfair_moat="Direct sync with developer commits and design updates to generate technical summaries without manual writing."
             ),
             target_audience="SaaS Product Managers & Agency Account Managers",
-            plain_english_explanation="A tool that connects to your team's work accounts like Slack, GitHub, and Jira, collects what everyone did over the week, and automatically packages it into a clean, easy-to-read report you can send to your clients with one click."
+            plain_english_explanation="A tool that connects to your team's work accounts like Slack, GitHub, and Jira, collects what everyone did over the week, and automatically packages it into[...]
         )
     elif "RBAC and user permission" in snippet:
         return BusinessConceptAnalysis(
             feasibility_score=9,
-            feasibility_rationale="Very feasible because authorization frameworks are common, but setting them up securely takes time. Developers will pay for ready-to-use SDKs that work with major frameworks.",
+            feasibility_rationale="Very feasible because authorization frameworks are common, but setting them up securely takes time. Developers will pay for ready-to-use SDKs that work with maj[...]
             saas_product_concept=SaasProductConcept(
                 name="PermitLock",
                 one_liner="Drop-in RBAC and fine-grained permissions SDK that deploys in under 5 minutes.",
@@ -176,7 +176,7 @@ def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
                 our_unfair_moat="Instant schema generation from simple English system descriptions (e.g. 'Admins can delete, Editors can edit')."
             ),
             target_audience="Full-Stack Developers and SaaS Tech Leads",
-            plain_english_explanation="A pre-made security kit for software creators that lets them add user logins and custom permission settings to their systems in just a few minutes, including a simple screen where administrators can decide who is allowed to view, edit, or delete items without needing to write code."
+            plain_english_explanation="A pre-made security kit for software creators that lets them add user logins and custom permission settings to their systems in just a few minutes, includin[...]
         )
     else:
         return BusinessConceptAnalysis(
@@ -197,7 +197,7 @@ def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
                 our_unfair_moat="Specifically tuned models trained on top-converting SaaS product hunt launch graphics and dark-mode templates."
             ),
             target_audience="SaaS Solo Founders & Bootstrapped Marketers",
-            plain_english_explanation="An automated design helper that takes a simple text description of a product launch or promotion and instantly generates matching social media images using your brand colors, then schedules them to be published automatically."
+            plain_english_explanation="An automated design helper that takes a simple text description of a product launch or promotion and instantly generates matching social media images using [...]
         )
 
 
@@ -268,7 +268,7 @@ def generate_daily_dork_query(client: genai.Client, recent_queries: list, model_
     1. The query must start with 'site:x.com'.
     2. Focus on phrases indicating frustration, friction, or desire (e.g., "takes me hours to", "wish there was a tool", "why is it so hard to", "manual spreadsheet", "takes forever to").
     3. Target SaaS, software, startup, or business niches (e.g., marketing, finance, sales, operations, CRM, customer service, dev tools).
-    4. MUST include negative keywords to filter out jobs, hiring, newsletters, courses, templates, ads, spam, and promotions. Examples: -job -hiring -recruiting -course -newsletter -sponsor -ad -giveaway -thread.
+    4. MUST include negative keywords to filter out jobs, hiring, newsletters, courses, templates, ads, spam, and promotions. Examples: -job -hiring -recruiting -course -newsletter -sponsor -ad -[...]
     5. Vary the niche (e.g., if recent queries targeted marketing or finance, target developer tooling, HR, legal, or customer support today).
     
     Output ONLY the query string, inside a code block or as plain text. Do not include quotes or any introductory/conversational text.
@@ -317,7 +317,7 @@ def clean_google_snippet(snippet: str) -> str:
     # - "3 days ago ... "
     # - "12h ago ... "
     # - "2024-05-12 ... "
-    date_pattern = r"^((?:[A-Za-z]{3}\s+\d{1,2},\s+\d{4})|(?:\d{1,2}\s+[A-Za-z]{3,}\s+\d{4})|(?:\d+\s+(?:days?|hours?|mins?|minutes?|secs?|seconds?)\s+ago)|(?:\d{4}-\d{2}-\d{2})|(?:\d{2}/\d{2}/\d{4}))\s*(?:\.{3,}|…)\s*(.*)"
+    date_pattern = r"^((?:[A-Za-z]{3}\s+\d{1,2},\s+\d{4})|(?:\d{1,2}\s+[A-Za-z]{3,}\s+\d{4})|(?:\d+\s+(?:days?|hours?|mins?|minutes?|secs?|seconds?)\s+ago)|(?:\d{4}-\d{2}-\d{2})|(?:\d{2}/\d{2}/\d[...]
     prefix_match = re.match(date_pattern, snippet)
     if prefix_match:
         snippet = prefix_match.group(2)
@@ -419,73 +419,115 @@ def clean_and_filter_results(results: list) -> list:
     return cleaned
 
 
-def analyze_with_gemini(snippet: str, client: genai.Client, model_name: str = "gemini-2.5-flash") -> BusinessConceptAnalysis:
+def is_api_error_retriable(error_str: str) -> bool:
     """
-    Leverages Gemini in a split-call architecture to bypass tool/JSON incompatibility and rate limits:
+    Checks if an error is temporary/retriable (503, rate limit, etc).
+    """
+    error_str_lower = str(error_str).lower()
+    retriable_keywords = [
+        "503", "service unavailable", "temporarily unavailable",
+        "500", "internal server error", "429", "rate limit",
+        "timeout", "connection reset", "temporarily"
+    ]
+    return any(keyword in error_str_lower for keyword in retriable_keywords)
+
+
+def analyze_with_gemini_with_retry(
+    snippet: str,
+    client: genai.Client,
+    max_retries: int = 3,
+    retry_interval: int = 300,  # 5 minutes in seconds
+    model_name: str = "gemini-2.5-flash"
+) -> BusinessConceptAnalysis:
+    """
+    Leverages Gemini in a split-call architecture with retry logic for transient failures:
     1. Research Stage: Call Gemini with Google Search tool to gather competitor and market insights.
     2. Sleep Throttle: Sleep 15 seconds to respect the 5 RPM rate limit.
     3. Structuring Stage: Call Gemini with Pydantic schema using the research summary to format the final JSON object.
-    """
-    # 1. Research Stage
-    research_prompt = f"""
-    You are an elite market researcher.
     
-    We have extracted the following raw user pain point/complaint from X (Twitter):
-    "{snippet}"
-    
-    Using Google Search, research the market to identify:
-    1. If this is a genuine, solvable problem in the modern world.
-    2. Direct competitors or existing SaaS tools that address this.
-    3. The technical feasibility of building a solution.
-    4. An unfair moat we could build to beat incumbents.
-    
-    Provide your analysis as a comprehensive, well-structured text summary.
+    On failure, retries up to max_retries times with retry_interval seconds between attempts.
     """
     
-    logger.info("Step 1: Running Google Search Grounding research...")
-    research_config = types.GenerateContentConfig(
-        tools=[types.Tool(google_search=types.GoogleSearch())],
-        temperature=0.2
-    )
-    
-    research_response = client.models.generate_content(
-        model=model_name,
-        contents=research_prompt,
-        config=research_config
-    )
-    research_summary = research_response.text
-    
-    # Sleep to respect rate limits (5 RPM limit = 12 seconds minimum between requests)
-    logger.info("Respecting rate limits: sleeping 15 seconds before structural analysis...")
-    time.sleep(15)
-    
-    # 2. Structuring Stage
-    structure_prompt = f"""
-    You are an elite Venture Capitalist and SaaS Product Architect.
-    
-    Raw User Pain Point:
-    "{snippet}"
-    
-    Market Research Summary:
-    {research_summary}
-    
-    Based on this research, formulate a polished business concept. Output exactly matching the required JSON schema.
-    """
-    
-    logger.info("Step 2: Structuring business concept with Pydantic schema...")
-    structure_config = types.GenerateContentConfig(
-        response_mime_type="application/json",
-        response_schema=BusinessConceptAnalysis,
-        temperature=0.2
-    )
-    
-    structure_response = client.models.generate_content(
-        model=model_name,
-        contents=structure_prompt,
-        config=structure_config
-    )
-    
-    return structure_response.parsed
+    for attempt in range(1, max_retries + 1):
+        try:
+            # 1. Research Stage
+            research_prompt = f"""
+            You are an elite market researcher.
+            
+            We have extracted the following raw user pain point/complaint from X (Twitter):
+            "{snippet}"
+            
+            Using Google Search, research the market to identify:
+            1. If this is a genuine, solvable problem in the modern world.
+            2. Direct competitors or existing SaaS tools that address this.
+            3. The technical feasibility of building a solution.
+            4. An unfair moat we could build to beat incumbents.
+            
+            Provide your analysis as a comprehensive, well-structured text summary.
+            """
+            
+            logger.info(f"Step 1 (Attempt {attempt}/{max_retries}): Running Google Search Grounding research...")
+            research_config = types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+                temperature=0.2
+            )
+            
+            research_response = client.models.generate_content(
+                model=model_name,
+                contents=research_prompt,
+                config=research_config
+            )
+            research_summary = research_response.text
+            
+            # Sleep to respect rate limits (5 RPM limit = 12 seconds minimum between requests)
+            logger.info("Respecting rate limits: sleeping 15 seconds before structural analysis...")
+            time.sleep(15)
+            
+            # 2. Structuring Stage
+            structure_prompt = f"""
+            You are an elite Venture Capitalist and SaaS Product Architect.
+            
+            Raw User Pain Point:
+            "{snippet}"
+            
+            Market Research Summary:
+            {research_summary}
+            
+            Based on this research, formulate a polished business concept. Output exactly matching the required JSON schema.
+            """
+            
+            logger.info(f"Step 2 (Attempt {attempt}/{max_retries}): Structuring business concept with Pydantic schema...")
+            structure_config = types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=BusinessConceptAnalysis,
+                temperature=0.2
+            )
+            
+            structure_response = client.models.generate_content(
+                model=model_name,
+                contents=structure_prompt,
+                config=structure_config
+            )
+            
+            logger.info(f"Successfully analyzed snippet on attempt {attempt}.")
+            return structure_response.parsed
+            
+        except Exception as e:
+            error_msg = str(e)
+            is_retriable = is_api_error_retriable(error_msg)
+            
+            if is_retriable and attempt < max_retries:
+                logger.warning(
+                    f"Attempt {attempt}/{max_retries} failed with retriable error: {error_msg}. "
+                    f"Retrying in {retry_interval} seconds ({retry_interval // 60} minutes)..."
+                )
+                time.sleep(retry_interval)
+            else:
+                logger.error(
+                    f"Failed to analyze snippet. Attempt {attempt}/{max_retries}. "
+                    f"Error: {error_msg}"
+                )
+                raise
 
 
 def map_analysis_to_row(raw_tweet: str, url: str, analysis: BusinessConceptAnalysis) -> list:
@@ -939,7 +981,7 @@ def main():
         logger.info(f"Slicing list to first {max_items} items (configured via MAX_ITEMS_PER_RUN).")
         new_unprocessed_items = new_unprocessed_items[:max_items]
         
-    # Step 6: Process through AI Brain
+    # Step 6: Process through AI Brain with retry logic
     new_rows_to_append = []
     
     if new_unprocessed_items:
@@ -952,7 +994,13 @@ def main():
                 if dry_run:
                     analysis = get_mock_analysis(snippet)
                 else:
-                    analysis = analyze_with_gemini(snippet, client)
+                    # Use retry-enabled function: max 3 attempts, 5-minute intervals
+                    analysis = analyze_with_gemini_with_retry(
+                        snippet,
+                        client,
+                        max_retries=3,
+                        retry_interval=300  # 5 minutes
+                    )
                     
                 row_data = map_analysis_to_row(snippet, url, analysis)
                 new_rows_to_append.append(row_data)
@@ -965,7 +1013,7 @@ def main():
                     
             except Exception as e:
                 # Graceful try-except wrap around individual runs to prevent pipeline crash
-                logger.error(f"Graceful Skip: Failed to analyze pain point from {url} due to error: {e}")
+                logger.error(f"Graceful Skip: Failed to analyze pain point from {url} after retries due to error: {e}")
                 # Even if it fails, sleep to reset rate limits before next loop
                 if i < len(new_unprocessed_items):
                     time.sleep(15)
