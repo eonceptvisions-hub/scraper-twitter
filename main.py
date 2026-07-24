@@ -298,7 +298,7 @@ def generate_daily_dork_query(
 ) -> str:
     """
     Asks LLM (ChatGPT or Gemini) to generate a creative, advanced Google Search dork query targeting x.com.
-    Uses gpt-5.4-mini for ChatGPT and gemini-3.0-flash for Gemini.
+    Uses gpt-5.4-mini for ChatGPT and gemini-3.5-flash for Gemini.
     """
     recent_queries_str = "\n".join([f"- {q}" for q in recent_queries]) if recent_queries else "None"
     
@@ -330,12 +330,12 @@ def generate_daily_dork_query(
                 )
                 query = response.choices[0].message.content.strip()
             else:
-                logger.info(f"Generating dynamic dork query via Gemini gemini-3.0-flash (Attempt {attempt}/{max_retries})...")
+                logger.info(f"Generating dynamic dork query via Gemini gemini-3.5-flash (Attempt {attempt}/{max_retries})...")
                 config = types.GenerateContentConfig(
                     temperature=0.7
                 )
                 response = client.models.generate_content(
-                    model="gemini-3.0-flash",
+                    model="gemini-3.5-flash",
                     contents=prompt,
                     config=config
                 )
@@ -1380,6 +1380,12 @@ def main():
     serpapi_key = os.getenv("SERPAPI_KEY")
     gemini_key = os.getenv("GEMINI_API_KEY")
     chatgpt_key = os.getenv("CHATGPT_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not chatgpt_key and os.path.exists("local_openai_key.txt"):
+        try:
+            with open("local_openai_key.txt", "r", encoding="utf-8") as f:
+                chatgpt_key = f.read().strip()
+        except Exception as e:
+            logger.warning(f"Failed to read local_openai_key.txt: {e}")
     gcp_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
     sheet_key = os.getenv("GOOGLE_SHEET_KEY")
     max_items = int(os.getenv("MAX_ITEMS_PER_RUN", "5"))
