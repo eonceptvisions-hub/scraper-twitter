@@ -290,16 +290,15 @@ def log_query(worksheet, query: str):
 
 
 def generate_daily_dork_query(
-    client: OpenAI,
+    client,
+    client_type: str,
     recent_queries: list,
-    model_name: str = "gpt-4o-mini",
     max_retries: int = 3,
     retry_interval: int = 60
 ) -> str:
     """
-    Asks Gemini to generate a creative, advanced Google Search dork query targeting x.com
-    to find SaaS/business complaints, ensuring it does not repeat queries from the last 30 days.
-    Includes retry logic with backoff to handle transient API errors.
+    Asks LLM (ChatGPT or Gemini) to generate a creative, advanced Google Search dork query targeting x.com.
+    Uses gpt-5.4-mini for ChatGPT and gemini-3.0-flash for Gemini.
     """
     recent_queries_str = "\n".join([f"- {q}" for q in recent_queries]) if recent_queries else "None"
     
@@ -322,15 +321,27 @@ def generate_daily_dork_query(
     
     for attempt in range(1, max_retries + 1):
         try:
-            logger.info(f"Generating dynamic dork query via ChatGPT (Attempt {attempt}/{max_retries})...")
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7
-            )
-            query = response.choices[0].message.content.strip()
+            if client_type == "openai":
+                logger.info(f"Generating dynamic dork query via ChatGPT gpt-5.4-mini (Attempt {attempt}/{max_retries})...")
+                response = client.chat.completions.create(
+                    model="gpt-5.4-mini",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7
+                )
+                query = response.choices[0].message.content.strip()
+            else:
+                logger.info(f"Generating dynamic dork query via Gemini gemini-3.0-flash (Attempt {attempt}/{max_retries})...")
+                config = types.GenerateContentConfig(
+                    temperature=0.7
+                )
+                response = client.models.generate_content(
+                    model="gemini-3.0-flash",
+                    contents=prompt,
+                    config=config
+                )
+                query = response.text.strip()
             
-            # Strip markdown code block wrappers if Gemini returns them
+            # Strip markdown code block wrappers if returns them
             if query.startswith("```"):
                 lines = query.split("\n")
                 if len(lines) > 2:
@@ -357,6 +368,7 @@ def generate_daily_dork_query(
             else:
                 logger.error(f"Failed to generate daily query: {error_msg}")
                 raise
+
 
 
 
@@ -525,7 +537,7 @@ def analyze_with_llm_with_retry(
             if client_type == "openai":
                 logger.info(f"Step 1 (Attempt {attempt}/{max_retries}): Running ChatGPT research...")
                 research_response = client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model="gpt-5.4-mini",
                     messages=[{"role": "user", "content": research_prompt}],
                     temperature=0.2
                 )
@@ -569,7 +581,7 @@ def analyze_with_llm_with_retry(
             if client_type == "openai":
                 logger.info(f"Step 2 (Attempt {attempt}/{max_retries}): Structuring business concept with Pydantic schema (ChatGPT)...")
                 response = client.beta.chat.completions.parse(
-                    model="gpt-4o-mini",
+                    model="gpt-5.4-mini",
                     messages=[{"role": "user", "content": structure_prompt}],
                     response_format=BusinessConceptAnalysis,
                     temperature=0.2
@@ -1402,7 +1414,7 @@ def main():
                 logger.info("Attempting to initialize and verify OpenAI Client...")
                 test_client = OpenAI(api_key=chatgpt_key)
                 test_client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model="gpt-5.4-mini",
                     messages=[{"role": "user", "content": "ping"}],
                     max_tokens=1,
                     timeout=5.0
