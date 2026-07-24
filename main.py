@@ -623,6 +623,9 @@ def format_google_sheet(spreadsheet):
             "right": {"style": "SOLID", "color": {"red": 0.88, "green": 0.91, "blue": 0.94}}
         }
         
+        # Get sheet metadata to find how many conditional formatting rules exist
+        metadata = spreadsheet.fetch_sheet_metadata()
+        
         # --- 1. Format Worksheet 0 (SaaS Incubation Sheet) ---
         worksheet_0 = spreadsheet.get_worksheet(0)
         sheet_id_0 = worksheet_0.id
@@ -647,14 +650,21 @@ def format_google_sheet(spreadsheet):
             16: 120  # Viability Rating
         }
         
-        requests_0 = [
-            # 1. Clear all existing conditional formatting rules to avoid stacking
-            {
-                "clearConditionalFormatRules": {
-                    "sheetId": sheet_id_0
+        # Clear all existing conditional formatting rules by repeatedly deleting index 0
+        sheet_metadata_0 = next((s for s in metadata.get("sheets", []) if s["properties"]["sheetId"] == sheet_id_0), None)
+        existing_rules_count_0 = len(sheet_metadata_0.get("conditionalFormats", [])) if sheet_metadata_0 else 0
+        
+        requests_0 = []
+        for _ in range(existing_rules_count_0):
+            requests_0.append({
+                "deleteConditionalFormatRule": {
+                    "sheetId": sheet_id_0,
+                    "index": 0
                 }
-            },
-            # 2. Freeze the first row
+            })
+            
+        requests_0.extend([
+            # Freeze the first row
             {
                 "updateSheetProperties": {
                     "properties": {
@@ -666,7 +676,7 @@ def format_google_sheet(spreadsheet):
                     "fields": "gridProperties.frozenRowCount"
                 }
             },
-            # 3. Set basic filter across headers (all 17 columns)
+            # Set basic filter across headers (all 17 columns)
             {
                 "setBasicFilter": {
                     "filter": {
@@ -679,7 +689,7 @@ def format_google_sheet(spreadsheet):
                     }
                 }
             },
-            # 4. Style header row (sleek dark slate, white bold text, centered, font: Inter, height: 45px)
+            # Style header row (sleek dark slate, white bold text, centered, font: Inter, height: 45px)
             {
                 "repeatCell": {
                     "range": {
@@ -715,7 +725,7 @@ def format_google_sheet(spreadsheet):
                     "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy,borders)"
                 }
             },
-            # 5. Style data cells (font: Inter, size: 10, vertical align: middle, text wrap: WRAP, borders: Solid)
+            # Style data cells (font: Inter, size: 10, vertical align: middle, text wrap: WRAP, borders: Solid)
             {
                 "repeatCell": {
                     "range": {
@@ -739,7 +749,7 @@ def format_google_sheet(spreadsheet):
                     "fields": "userEnteredFormat(textFormat,verticalAlignment,wrapStrategy,borders)"
                 }
             },
-            # 6. Center align Feasibility score, Alternatives status, and validation ratings
+            # Center align Feasibility score, Alternatives status, and validation ratings
             {
                 "repeatCell": {
                     "range": {
@@ -774,7 +784,7 @@ def format_google_sheet(spreadsheet):
                     "fields": "userEnteredFormat(horizontalAlignment)"
                 }
             },
-            # 7. Bold Product Name
+            # Bold Product Name
             {
                 "repeatCell": {
                     "range": {
@@ -796,7 +806,7 @@ def format_google_sheet(spreadsheet):
                     "fields": "userEnteredFormat(textFormat.bold)"
                 }
             },
-            # 8. Set Header row height to 45px
+            # Set Header row height to 45px
             {
                 "updateDimensionProperties": {
                     "range": {
@@ -811,7 +821,7 @@ def format_google_sheet(spreadsheet):
                     "fields": "pixelSize"
                 }
             },
-            # 9. Set Data row heights to 35px
+            # Set Data row heights to 35px
             {
                 "updateDimensionProperties": {
                     "range": {
@@ -826,7 +836,7 @@ def format_google_sheet(spreadsheet):
                     "fields": "pixelSize"
                 }
             },
-            # 10. Conditional Formatting: Feasibility Score - High (8-10)
+            # Conditional Formatting: Feasibility Score - High (8-10)
             {
                 "addConditionalFormatRule": {
                     "rule": {
@@ -839,7 +849,7 @@ def format_google_sheet(spreadsheet):
                         }],
                         "booleanRule": {
                             "condition": {
-                                "type": "NUMBER_GREATER_THAN_OR_EQUAL",
+                                "type": "NUMBER_GREATER_THAN_EQ",
                                 "values": [{"userEnteredValue": "8"}]
                             },
                             "format": {
@@ -851,7 +861,7 @@ def format_google_sheet(spreadsheet):
                     "index": 0
                 }
             },
-            # 11. Conditional Formatting: Feasibility Score - Medium (5-7)
+            # Conditional Formatting: Feasibility Score - Medium (5-7)
             {
                 "addConditionalFormatRule": {
                     "rule": {
@@ -876,7 +886,7 @@ def format_google_sheet(spreadsheet):
                     "index": 1
                 }
             },
-            # 12. Conditional Formatting: Feasibility Score - Low (1-4)
+            # Conditional Formatting: Feasibility Score - Low (1-4)
             {
                 "addConditionalFormatRule": {
                     "rule": {
@@ -889,7 +899,7 @@ def format_google_sheet(spreadsheet):
                         }],
                         "booleanRule": {
                             "condition": {
-                                "type": "NUMBER_LESS_THAN_OR_EQUAL",
+                                "type": "NUMBER_LESS_THAN_EQ",
                                 "values": [{"userEnteredValue": "4"}]
                             },
                             "format": {
@@ -901,7 +911,7 @@ def format_google_sheet(spreadsheet):
                     "index": 2
                 }
             },
-            # 13. Conditional Formatting: Demand Urgency & Viability Rating - High (8-10)
+            # Conditional Formatting: Demand Urgency & Viability Rating - High (8-10)
             {
                 "addConditionalFormatRule": {
                     "rule": {
@@ -923,7 +933,7 @@ def format_google_sheet(spreadsheet):
                         ],
                         "booleanRule": {
                             "condition": {
-                                "type": "NUMBER_GREATER_THAN_OR_EQUAL",
+                                "type": "NUMBER_GREATER_THAN_EQ",
                                 "values": [{"userEnteredValue": "8"}]
                             },
                             "format": {
@@ -935,7 +945,7 @@ def format_google_sheet(spreadsheet):
                     "index": 3
                 }
             },
-            # 14. Conditional Formatting: Demand Urgency & Viability Rating - Medium (5-7)
+            # Conditional Formatting: Demand Urgency & Viability Rating - Medium (5-7)
             {
                 "addConditionalFormatRule": {
                     "rule": {
@@ -969,7 +979,7 @@ def format_google_sheet(spreadsheet):
                     "index": 4
                 }
             },
-            # 15. Conditional Formatting: Demand Urgency & Viability Rating - Low (1-4)
+            # Conditional Formatting: Demand Urgency & Viability Rating - Low (1-4)
             {
                 "addConditionalFormatRule": {
                     "rule": {
@@ -991,7 +1001,7 @@ def format_google_sheet(spreadsheet):
                         ],
                         "booleanRule": {
                             "condition": {
-                                "type": "NUMBER_LESS_THAN_OR_EQUAL",
+                                "type": "NUMBER_LESS_THAN_EQ",
                                 "values": [{"userEnteredValue": "4"}]
                             },
                             "format": {
@@ -1003,7 +1013,7 @@ def format_google_sheet(spreadsheet):
                     "index": 5
                 }
             },
-            # 16. Conditional Formatting: MVP Complexity Score - High Complexity (8-10) -> Highlight RED
+            # Conditional Formatting: MVP Complexity Score - High Complexity (8-10) -> Highlight RED
             {
                 "addConditionalFormatRule": {
                     "rule": {
@@ -1016,7 +1026,7 @@ def format_google_sheet(spreadsheet):
                         }],
                         "booleanRule": {
                             "condition": {
-                                "type": "NUMBER_GREATER_THAN_OR_EQUAL",
+                                "type": "NUMBER_GREATER_THAN_EQ",
                                 "values": [{"userEnteredValue": "8"}]
                             },
                             "format": {
@@ -1028,7 +1038,7 @@ def format_google_sheet(spreadsheet):
                     "index": 6
                 }
             },
-            # 17. Conditional Formatting: MVP Complexity Score - Medium Complexity (5-7) -> Highlight YELLOW
+            # Conditional Formatting: MVP Complexity Score - Medium Complexity (5-7) -> Highlight YELLOW
             {
                 "addConditionalFormatRule": {
                     "rule": {
@@ -1053,7 +1063,7 @@ def format_google_sheet(spreadsheet):
                     "index": 7
                 }
             },
-            # 18. Conditional Formatting: MVP Complexity Score - Low Complexity (1-4) -> Highlight GREEN (Preferred)
+            # Conditional Formatting: MVP Complexity Score - Low Complexity (1-4) -> Highlight GREEN (Preferred)
             {
                 "addConditionalFormatRule": {
                     "rule": {
@@ -1066,7 +1076,7 @@ def format_google_sheet(spreadsheet):
                         }],
                         "booleanRule": {
                             "condition": {
-                                "type": "NUMBER_LESS_THAN_OR_EQUAL",
+                                "type": "NUMBER_LESS_THAN_EQ",
                                 "values": [{"userEnteredValue": "4"}]
                             },
                             "format": {
@@ -1078,7 +1088,7 @@ def format_google_sheet(spreadsheet):
                     "index": 8
                 }
             },
-            # 19. Conditional Formatting: Zebra Striping (Even data rows) (all 17 columns)
+            # Conditional Formatting: Zebra Striping (Even data rows) (all 17 columns)
             {
                 "addConditionalFormatRule": {
                     "rule": {
@@ -1091,7 +1101,7 @@ def format_google_sheet(spreadsheet):
                         }],
                         "booleanRule": {
                             "condition": {
-                                "type": "CUSTOM_FORMAT_RULE",
+                                "type": "CUSTOM_FORMULA",
                                 "values": [{"userEnteredValue": "=MOD(ROW(), 2) = 0"}]
                             },
                             "format": {
@@ -1102,7 +1112,7 @@ def format_google_sheet(spreadsheet):
                     "index": 9
                 }
             }
-        ]
+        ])
         
         # Add column widths to requests_0
         for col_idx, width in column_widths_0.items():
@@ -1135,14 +1145,21 @@ def format_google_sheet(spreadsheet):
                 1: 540  # Generated Query
             }
             
-            requests_1 = [
-                # 1. Clear all existing conditional formatting rules to avoid stacking
-                {
-                    "clearConditionalFormatRules": {
-                        "sheetId": sheet_id_1
+            # Clear existing conditional format rules for worksheet_1
+            sheet_metadata_1 = next((s for s in metadata.get("sheets", []) if s["properties"]["sheetId"] == sheet_id_1), None)
+            existing_rules_count_1 = len(sheet_metadata_1.get("conditionalFormats", [])) if sheet_metadata_1 else 0
+            
+            requests_1 = []
+            for _ in range(existing_rules_count_1):
+                requests_1.append({
+                    "deleteConditionalFormatRule": {
+                        "sheetId": sheet_id_1,
+                        "index": 0
                     }
-                },
-                # 2. Freeze first row
+                })
+                
+            requests_1.extend([
+                # Freeze first row
                 {
                     "updateSheetProperties": {
                         "properties": {
@@ -1154,7 +1171,7 @@ def format_google_sheet(spreadsheet):
                         "fields": "gridProperties.frozenRowCount"
                     }
                 },
-                # 3. Set basic filter
+                # Set basic filter
                 {
                     "setBasicFilter": {
                         "filter": {
@@ -1167,7 +1184,7 @@ def format_google_sheet(spreadsheet):
                         }
                     }
                 },
-                # 4. Style header row (grey background, white bold text, centered, height: 45px)
+                # Style header row (grey background, white bold text, centered, height: 45px)
                 {
                     "repeatCell": {
                         "range": {
@@ -1203,7 +1220,7 @@ def format_google_sheet(spreadsheet):
                         "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy,borders)"
                     }
                 },
-                # 5. Style data cells (font: Inter, size: 10, wrap: WRAP, borders: Solid)
+                # Style data cells (font: Inter, size: 10, wrap: WRAP, borders: Solid)
                 {
                     "repeatCell": {
                         "range": {
@@ -1227,7 +1244,7 @@ def format_google_sheet(spreadsheet):
                         "fields": "userEnteredFormat(textFormat,verticalAlignment,wrapStrategy,borders)"
                     }
                 },
-                # 6. Set Header row height to 45px
+                # Set Header row height to 45px
                 {
                     "updateDimensionProperties": {
                         "range": {
@@ -1242,7 +1259,7 @@ def format_google_sheet(spreadsheet):
                         "fields": "pixelSize"
                     }
                 },
-                # 7. Set Data row heights to 35px
+                # Set Data row heights to 35px
                 {
                     "updateDimensionProperties": {
                         "range": {
@@ -1257,7 +1274,7 @@ def format_google_sheet(spreadsheet):
                         "fields": "pixelSize"
                     }
                 },
-                # 8. Conditional Formatting: Zebra Striping (Even data rows)
+                # Conditional Formatting: Zebra Striping (Even data rows)
                 {
                     "addConditionalFormatRule": {
                         "rule": {
@@ -1270,7 +1287,7 @@ def format_google_sheet(spreadsheet):
                             }],
                             "booleanRule": {
                                 "condition": {
-                                    "type": "CUSTOM_FORMAT_RULE",
+                                    "type": "CUSTOM_FORMULA",
                                     "values": [{"userEnteredValue": "=MOD(ROW(), 2) = 0"}]
                                 },
                                 "format": {
@@ -1281,7 +1298,7 @@ def format_google_sheet(spreadsheet):
                         "index": 0
                     }
                 }
-            ]
+            ])
             
             # Add column widths to requests_1
             for col_idx, width in column_widths_1.items():
