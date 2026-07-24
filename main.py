@@ -25,6 +25,8 @@ import requests
 import gspread
 from google.oauth2.service_account import Credentials
 from openai import OpenAI
+from google import genai
+from google.genai import types
 from pydantic import BaseModel, Field
 
 # Set up logging format
@@ -487,20 +489,18 @@ def is_api_error_retriable(error_str: str) -> bool:
     return any(keyword in error_str_lower for keyword in retriable_keywords)
 
 
-def analyze_with_chatgpt_with_retry(
+def analyze_with_llm_with_retry(
     snippet: str,
-    client: OpenAI,
+    client,
+    client_type: str,
     max_retries: int = 3,
-    retry_interval: int = 300,  # 5 minutes in seconds
-    model_name: str = "gpt-4o-mini"
+    retry_interval: int = 300
 ) -> BusinessConceptAnalysis:
     """
-    Leverages Gemini in a split-call architecture with retry logic for transient failures:
-    1. Research Stage: Call Gemini with Google Search tool to gather competitor and market insights.
-    2. Sleep Throttle: Sleep 15 seconds to respect the 5 RPM rate limit.
-    3. Structuring Stage: Call Gemini with Pydantic schema using the research summary to format the final JSON object.
-    
-    On failure, retries up to max_retries times with retry_interval seconds between attempts.
+    Leverages LLM in a split-call architecture with retry logic for transient failures:
+    1. Research Stage: Call LLM to gather competitor and market insights.
+    2. Sleep Throttle: Sleep 15 seconds to respect rate limits.
+    3. Structuring Stage: Call LLM with Pydantic schema to format the final JSON object.
     """
     
     for attempt in range(1, max_retries + 1):
@@ -512,7 +512,7 @@ def analyze_with_chatgpt_with_retry(
             We have extracted the following raw user pain point/complaint from X (Twitter):
             "{snippet}"
             
-            Using Google Search, perform market research and validation guided by these principles:
+            Perform market research and validation guided by these principles:
             
             1. THINK BEFORE CODING (Alternative Verification): Research if this exact problem is already solved. Find actual products, SaaS tools, open-source projects, or common workarounds that people use today.
             2. SIMPLICITY FIRST (MVP Scoping): Focus on the simplest potential software solution that directly solves this core pain point.
@@ -522,13 +522,26 @@ def analyze_with_chatgpt_with_retry(
             Provide a comprehensive, well-structured text summary detailing the existing alternatives, technical feasibility, core MVP scope, and competitive gaps.
             """
             
-            logger.info(f"Step 1 (Attempt {attempt}/{max_retries}): Running ChatGPT research...")
-            research_response = client.chat.completions.create(
-                model=model_name,
-                messages=[{"role": "user", "content": research_prompt}],
-                temperature=0.2
-            )
-            research_summary = research_response.choices[0].message.content
+            if client_type == "openai":
+                logger.info(f"Step 1 (Attempt {attempt}/{max_retries}): Running ChatGPT research...")
+                research_response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": research_prompt}],
+                    temperature=0.2
+                )
+                research_summary = research_response.choices[0].message.content
+            else:
+                logger.info(f"Step 1 (Attempt {attempt}/{max_retries}): Running Google Search Grounding research...")
+                research_config = types.GenerateContentConfig(
+                    tools=[types.Tool(google_search=types.GoogleSearch())],
+                    temperature=0.2
+                )
+                research_response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=research_prompt,
+                    config=research_config
+                )
+                research_summary = research_response.text
             
             # Sleep to respect rate limits
             logger.info("Respecting rate limits: sleeping 15 seconds before structural analysis...")
@@ -553,16 +566,28 @@ def analyze_with_chatgpt_with_retry(
             - SAAS_PRODUCT_CONCEPT: Propose a simple, surgical MVP concept matching the research.
             """
             
-            logger.info(f"Step 2 (Attempt {attempt}/{max_retries}): Structuring business concept with Pydantic schema...")
-            response = client.beta.chat.completions.parse(
-                model=model_name,
-                messages=[{"role": "user", "content": structure_prompt}],
-                response_format=BusinessConceptAnalysis,
-                temperature=0.2
-            )
-            
-            logger.info(f"Successfully analyzed snippet on attempt {attempt}.")
-            return response.choices[0].message.parsed
+            if client_type == "openai":
+                logger.info(f"Step 2 (Attempt {attempt}/{max_retries}): Structuring business concept with Pydantic schema (ChatGPT)...")
+                response = client.beta.chat.completions.parse(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": structure_prompt}],
+                    response_format=BusinessConceptAnalysis,
+                    temperature=0.2
+                )
+                return response.choices[0].message.parsed
+            else:
+                logger.info(f"Step 2 (Attempt {attempt}/{max_retries}): Structuring business concept with Pydantic schema (Gemini)...")
+                structure_config = types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=BusinessConceptAnalysis,
+                    temperature=0.2
+                )
+                structure_response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=structure_prompt,
+                    config=structure_config
+                )
+                return structure_response.parsed
             
         except Exception as e:
             error_msg = str(e)
@@ -1341,6 +1366,7 @@ def main():
     # Load Environment Variables
     dry_run = os.getenv("DRY_RUN", "false").lower() == "true"
     serpapi_key = os.getenv("SERPAPI_KEY")
+    gemini_key = os.getenv("GEMINI_API_KEY")
     chatgpt_key = os.getenv("CHATGPT_API_KEY") or os.getenv("OPENAI_API_KEY")
     gcp_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
     sheet_key = os.getenv("GOOGLE_SHEET_KEY")
@@ -1353,8 +1379,8 @@ def main():
         missing = []
         if not serpapi_key:
             missing.append("SERPAPI_KEY")
-        if not chatgpt_key:
-            missing.append("CHATGPT_API_KEY")
+        if not chatgpt_key and not gemini_key:
+            missing.append("CHATGPT_API_KEY or GEMINI_API_KEY")
         if not gcp_json:
             missing.append("GCP_SERVICE_ACCOUNT_JSON")
         if not sheet_key:
@@ -1365,14 +1391,41 @@ def main():
             logger.error("Set the required environment variables or run in dry-run mode using: DRY_RUN=true")
             sys.exit(1)
             
-    # Initialize OpenAI Client if in production
+    # Initialize Client with self-healing fallback
     client = None
+    client_type = "gemini"
+    
     if not dry_run:
-        try:
-            client = OpenAI(api_key=chatgpt_key)
-        except Exception as e:
-            logger.error(f"Failed to initialize OpenAI Client: {e}")
-            sys.exit(1)
+        if chatgpt_key:
+            try:
+                # Test OpenAI credentials and quota
+                logger.info("Attempting to initialize and verify OpenAI Client...")
+                test_client = OpenAI(api_key=chatgpt_key)
+                test_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": "ping"}],
+                    max_tokens=1,
+                    timeout=5.0
+                )
+                client = test_client
+                client_type = "openai"
+                logger.info("Verified OpenAI Client successfully (quota active).")
+            except Exception as e:
+                logger.warning(f"OpenAI verification failed (likely insufficient quota or expired billing): {e}")
+                logger.warning("Falling back to Gemini client...")
+                
+        if not client:
+            if not gemini_key:
+                logger.error("No active API keys found. You must supply GEMINI_API_KEY as fallback.")
+                sys.exit(1)
+            try:
+                logger.info("Initializing Google Gemini Client...")
+                client = genai.Client(api_key=gemini_key)
+                client_type = "gemini"
+                logger.info("Gemini Client initialized successfully.")
+            except Exception as e:
+                logger.error(f"Failed to initialize Gemini Client: {e}")
+                sys.exit(1)
 
     # Step 1: Open Target Google Sheet, Retrieve Existing URLs, and Query History
     existing_urls = set()
@@ -1427,7 +1480,7 @@ def main():
     if dry_run:
         daily_query = 'site:x.com ("takes me hours" OR "takes forever") (SaaS OR business) -job -hiring'
     else:
-        daily_query = generate_daily_dork_query(client, recent_queries)
+        daily_query = generate_daily_dork_query(client, client_type, recent_queries)
         log_query(history_worksheet, daily_query)
         logger.info("Sleeping 15 seconds after query generation to prevent rate limit issues...")
         time.sleep(15)
@@ -1491,11 +1544,12 @@ def main():
                     analysis = get_mock_analysis(snippet)
                 else:
                     # Use retry-enabled function: max 3 attempts, 5-minute intervals
-                    analysis = analyze_with_chatgpt_with_retry(
+                    analysis = analyze_with_llm_with_retry(
                         snippet,
                         client,
+                        client_type,
                         max_retries=3,
-                        retry_interval=300  # 5 minutes
+                        retry_interval=300
                     )
                     
                 row_data = map_analysis_to_row(snippet, url, analysis)
