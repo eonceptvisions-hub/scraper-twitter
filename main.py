@@ -2,14 +2,14 @@
 """
 Autonomous AI SaaS Ideation & Research Pipeline
 Queries SerpApi for X (Twitter) complaints, filters out duplicates,
-processes them through a Gemini-based research agent with Search Grounding
+processes them through a ChatGPT-based research agent with Search Grounding
 and Pydantic validation, and logs structured business ideas to a Google Sheet.
 
 Requirements:
 - requests (for SerpApi)
 - gspread (for Google Sheets)
 - google-auth (for service account auth)
-- google-genai (Gemini 2.5 Flash SDK)
+- openai (OpenAI Python SDK)
 - pydantic (Structured validation)
 """
 
@@ -24,8 +24,7 @@ import urllib.parse
 import requests
 import gspread
 from google.oauth2.service_account import Credentials
-from google import genai
-from google.genai import types
+from openai import OpenAI
 from pydantic import BaseModel, Field
 
 # Set up logging format
@@ -289,9 +288,9 @@ def log_query(worksheet, query: str):
 
 
 def generate_daily_dork_query(
-    client: genai.Client,
+    client: OpenAI,
     recent_queries: list,
-    model_name: str = "gemini-2.5-flash",
+    model_name: str = "gpt-4o-mini",
     max_retries: int = 3,
     retry_interval: int = 60
 ) -> str:
@@ -321,17 +320,13 @@ def generate_daily_dork_query(
     
     for attempt in range(1, max_retries + 1):
         try:
-            logger.info(f"Generating dynamic dork query via Gemini (Attempt {attempt}/{max_retries})...")
-            config = types.GenerateContentConfig(
-                temperature=0.7 # higher temperature for creative query generation
-            )
-            response = client.models.generate_content(
+            logger.info(f"Generating dynamic dork query via ChatGPT (Attempt {attempt}/{max_retries})...")
+            response = client.chat.completions.create(
                 model=model_name,
-                contents=prompt,
-                config=config
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7
             )
-            
-            query = response.text.strip()
+            query = response.choices[0].message.content.strip()
             
             # Strip markdown code block wrappers if Gemini returns them
             if query.startswith("```"):
@@ -492,12 +487,12 @@ def is_api_error_retriable(error_str: str) -> bool:
     return any(keyword in error_str_lower for keyword in retriable_keywords)
 
 
-def analyze_with_gemini_with_retry(
+def analyze_with_chatgpt_with_retry(
     snippet: str,
-    client: genai.Client,
+    client: OpenAI,
     max_retries: int = 3,
     retry_interval: int = 300,  # 5 minutes in seconds
-    model_name: str = "gemini-2.5-flash"
+    model_name: str = "gpt-4o-mini"
 ) -> BusinessConceptAnalysis:
     """
     Leverages Gemini in a split-call architecture with retry logic for transient failures:
@@ -527,20 +522,15 @@ def analyze_with_gemini_with_retry(
             Provide a comprehensive, well-structured text summary detailing the existing alternatives, technical feasibility, core MVP scope, and competitive gaps.
             """
             
-            logger.info(f"Step 1 (Attempt {attempt}/{max_retries}): Running Google Search Grounding research...")
-            research_config = types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
+            logger.info(f"Step 1 (Attempt {attempt}/{max_retries}): Running ChatGPT research...")
+            research_response = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": research_prompt}],
                 temperature=0.2
             )
+            research_summary = research_response.choices[0].message.content
             
-            research_response = client.models.generate_content(
-                model=model_name,
-                contents=research_prompt,
-                config=research_config
-            )
-            research_summary = research_response.text
-            
-            # Sleep to respect rate limits (5 RPM limit = 12 seconds minimum between requests)
+            # Sleep to respect rate limits
             logger.info("Respecting rate limits: sleeping 15 seconds before structural analysis...")
             time.sleep(15)
             
@@ -564,20 +554,15 @@ def analyze_with_gemini_with_retry(
             """
             
             logger.info(f"Step 2 (Attempt {attempt}/{max_retries}): Structuring business concept with Pydantic schema...")
-            structure_config = types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=BusinessConceptAnalysis,
+            response = client.beta.chat.completions.parse(
+                model=model_name,
+                messages=[{"role": "user", "content": structure_prompt}],
+                response_format=BusinessConceptAnalysis,
                 temperature=0.2
             )
             
-            structure_response = client.models.generate_content(
-                model=model_name,
-                contents=structure_prompt,
-                config=structure_config
-            )
-            
             logger.info(f"Successfully analyzed snippet on attempt {attempt}.")
-            return structure_response.parsed
+            return response.choices[0].message.parsed
             
         except Exception as e:
             error_msg = str(e)
@@ -1356,7 +1341,7 @@ def main():
     # Load Environment Variables
     dry_run = os.getenv("DRY_RUN", "false").lower() == "true"
     serpapi_key = os.getenv("SERPAPI_KEY")
-    gemini_key = os.getenv("GEMINI_API_KEY")
+    chatgpt_key = os.getenv("CHATGPT_API_KEY") or os.getenv("OPENAI_API_KEY")
     gcp_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
     sheet_key = os.getenv("GOOGLE_SHEET_KEY")
     max_items = int(os.getenv("MAX_ITEMS_PER_RUN", "5"))
@@ -1368,8 +1353,8 @@ def main():
         missing = []
         if not serpapi_key:
             missing.append("SERPAPI_KEY")
-        if not gemini_key:
-            missing.append("GEMINI_API_KEY")
+        if not chatgpt_key:
+            missing.append("CHATGPT_API_KEY")
         if not gcp_json:
             missing.append("GCP_SERVICE_ACCOUNT_JSON")
         if not sheet_key:
@@ -1380,14 +1365,13 @@ def main():
             logger.error("Set the required environment variables or run in dry-run mode using: DRY_RUN=true")
             sys.exit(1)
             
-    # Initialize Gemini Client if in production
+    # Initialize OpenAI Client if in production
     client = None
     if not dry_run:
         try:
-            # The SDK automatically uses GEMINI_API_KEY from environment variables
-            client = genai.Client()
+            client = OpenAI(api_key=chatgpt_key)
         except Exception as e:
-            logger.error(f"Failed to initialize Gemini Client: {e}")
+            logger.error(f"Failed to initialize OpenAI Client: {e}")
             sys.exit(1)
 
     # Step 1: Open Target Google Sheet, Retrieve Existing URLs, and Query History
@@ -1507,7 +1491,7 @@ def main():
                     analysis = get_mock_analysis(snippet)
                 else:
                     # Use retry-enabled function: max 3 attempts, 5-minute intervals
-                    analysis = analyze_with_gemini_with_retry(
+                    analysis = analyze_with_chatgpt_with_retry(
                         snippet,
                         client,
                         max_retries=3,
