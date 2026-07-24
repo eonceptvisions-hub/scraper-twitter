@@ -131,6 +131,28 @@ def is_valid_x_url(url: str) -> bool:
         return False
 
 
+def calculate_jaccard_similarity(text1: str, text2: str) -> float:
+    """
+    Calculates Jaccard similarity between two texts based on word tokens.
+    Used for duplicate check to avoid highly similar snippets.
+    """
+    def get_words(t):
+        return set(re.findall(r'\w+', t.lower()))
+    
+    words1 = get_words(text1)
+    words2 = get_words(text2)
+    
+    if not words1 and not words2:
+        return 1.0
+    if not words1 or not words2:
+        return 0.0
+        
+    intersection = words1.intersection(words2)
+    union = words1.union(words2)
+    
+    return len(intersection) / len(union)
+
+
 def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
     """
     Generates high-fidelity mock Pydantic responses matching the mock search snippets.
@@ -561,11 +583,20 @@ def map_analysis_to_row(raw_tweet: str, url: str, analysis: BusinessConceptAnaly
 def format_google_sheet(spreadsheet):
     """
     Applies professional styling, freezes header rows, enables basic filtering, 
-    and configures text wrapping and custom column dimensions for both worksheets.
+    and configures text wrapping, custom column dimensions, and color-coded
+    conditional formatting rules for both worksheets.
     """
-    logger.info("Applying premium formatting to Google Sheets...")
+    logger.info("Applying premium formatting and color-coding to Google Sheets...")
     try:
-        # --- 1. Format Worksheet 1 (SaaS Incubation Sheet) ---
+        # Define common styling properties
+        border_format = {
+            "top": {"style": "SOLID", "color": {"red": 0.88, "green": 0.91, "blue": 0.94}},
+            "bottom": {"style": "SOLID", "color": {"red": 0.88, "green": 0.91, "blue": 0.94}},
+            "left": {"style": "SOLID", "color": {"red": 0.88, "green": 0.91, "blue": 0.94}},
+            "right": {"style": "SOLID", "color": {"red": 0.88, "green": 0.91, "blue": 0.94}}
+        }
+        
+        # --- 1. Format Worksheet 0 (SaaS Incubation Sheet) ---
         worksheet_0 = spreadsheet.get_worksheet(0)
         sheet_id_0 = worksheet_0.id
         
@@ -586,7 +617,13 @@ def format_google_sheet(spreadsheet):
         }
         
         requests_0 = [
-            # Freeze the first row
+            # 1. Clear all existing conditional formatting rules to avoid stacking
+            {
+                "clearConditionalFormatRules": {
+                    "sheetId": sheet_id_0
+                }
+            },
+            # 2. Freeze the first row
             {
                 "updateSheetProperties": {
                     "properties": {
@@ -598,7 +635,7 @@ def format_google_sheet(spreadsheet):
                     "fields": "gridProperties.frozenRowCount"
                 }
             },
-            # Set basic filter across headers
+            # 3. Set basic filter across headers
             {
                 "setBasicFilter": {
                     "filter": {
@@ -611,7 +648,7 @@ def format_google_sheet(spreadsheet):
                     }
                 }
             },
-            # Style header row (sleek dark slate, white bold text, centered, font: Inter)
+            # 4. Style header row (sleek dark slate, white bold text, centered, font: Inter, height: 45px)
             {
                 "repeatCell": {
                     "range": {
@@ -624,7 +661,7 @@ def format_google_sheet(spreadsheet):
                     "cell": {
                         "userEnteredFormat": {
                             "backgroundColor": {
-                                "red": 0.098,  # #182232
+                                "red": 0.098,
                                 "green": 0.137,
                                 "blue": 0.200
                             },
@@ -640,13 +677,14 @@ def format_google_sheet(spreadsheet):
                             },
                             "horizontalAlignment": "CENTER",
                             "verticalAlignment": "MIDDLE",
-                            "wrapStrategy": "WRAP"
+                            "wrapStrategy": "WRAP",
+                            "borders": border_format
                         }
                     },
-                    "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)"
+                    "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy,borders)"
                 }
             },
-            # Style data cells (font: Inter, size: 10, vertical align: middle, text wrap: WRAP)
+            # 5. Style data cells (font: Inter, size: 10, vertical align: middle, text wrap: WRAP, borders: Solid)
             {
                 "repeatCell": {
                     "range": {
@@ -663,13 +701,14 @@ def format_google_sheet(spreadsheet):
                                 "fontSize": 10
                             },
                             "verticalAlignment": "MIDDLE",
-                            "wrapStrategy": "WRAP"
+                            "wrapStrategy": "WRAP",
+                            "borders": border_format
                         }
                     },
-                    "fields": "userEnteredFormat(textFormat,verticalAlignment,wrapStrategy)"
+                    "fields": "userEnteredFormat(textFormat,verticalAlignment,wrapStrategy,borders)"
                 }
             },
-            # Center align and bold Feasibility score
+            # 6. Center align Feasibility score
             {
                 "repeatCell": {
                     "range": {
@@ -681,16 +720,13 @@ def format_google_sheet(spreadsheet):
                     },
                     "cell": {
                         "userEnteredFormat": {
-                            "textFormat": {
-                                "bold": True
-                            },
                             "horizontalAlignment": "CENTER"
                         }
                     },
-                    "fields": "userEnteredFormat(textFormat.bold,horizontalAlignment)"
+                    "fields": "userEnteredFormat(horizontalAlignment)"
                 }
             },
-            # Bold Product Name
+            # 7. Bold Product Name
             {
                 "repeatCell": {
                     "range": {
@@ -703,11 +739,142 @@ def format_google_sheet(spreadsheet):
                     "cell": {
                         "userEnteredFormat": {
                             "textFormat": {
-                                "bold": True
+                                "bold": True,
+                                "fontFamily": "Inter",
+                                "fontSize": 10
                             }
                         }
                     },
                     "fields": "userEnteredFormat(textFormat.bold)"
+                }
+            },
+            # 8. Set Header row height to 45px
+            {
+                "updateDimensionProperties": {
+                    "range": {
+                        "sheetId": sheet_id_0,
+                        "dimension": "ROWS",
+                        "startIndex": 0,
+                        "endIndex": 1
+                    },
+                    "properties": {
+                        "pixelSize": 45
+                    },
+                    "fields": "pixelSize"
+                }
+            },
+            # 9. Set Data row heights to 35px
+            {
+                "updateDimensionProperties": {
+                    "range": {
+                        "sheetId": sheet_id_0,
+                        "dimension": "ROWS",
+                        "startIndex": 1,
+                        "endIndex": 1000
+                    },
+                    "properties": {
+                        "pixelSize": 35
+                    },
+                    "fields": "pixelSize"
+                }
+            },
+            # 10. Conditional Formatting: Feasibility Score - High (8-10)
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [{
+                            "sheetId": sheet_id_0,
+                            "startRowIndex": 1,
+                            "endRowIndex": 1000,
+                            "startColumnIndex": 3,
+                            "endColumnIndex": 4
+                        }],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "NUMBER_GREATER_THAN_OR_EQUAL",
+                                "values": [{"userEnteredValue": "8"}]
+                            },
+                            "format": {
+                                "backgroundColor": {"red": 0.90, "green": 0.96, "blue": 0.92},
+                                "textFormat": {"foregroundColor": {"red": 0.07, "green": 0.45, "blue": 0.20}, "bold": True}
+                            }
+                        }
+                    },
+                    "index": 0
+                }
+            },
+            # 11. Conditional Formatting: Feasibility Score - Medium (5-7)
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [{
+                            "sheetId": sheet_id_0,
+                            "startRowIndex": 1,
+                            "endRowIndex": 1000,
+                            "startColumnIndex": 3,
+                            "endColumnIndex": 4
+                        }],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "NUMBER_BETWEEN",
+                                "values": [{"userEnteredValue": "5"}, {"userEnteredValue": "7"}]
+                            },
+                            "format": {
+                                "backgroundColor": {"red": 1.0, "green": 0.97, "blue": 0.88},
+                                "textFormat": {"foregroundColor": {"red": 0.69, "green": 0.38, "blue": 0.0}, "bold": True}
+                            }
+                        }
+                    },
+                    "index": 1
+                }
+            },
+            # 12. Conditional Formatting: Feasibility Score - Low (1-4)
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [{
+                            "sheetId": sheet_id_0,
+                            "startRowIndex": 1,
+                            "endRowIndex": 1000,
+                            "startColumnIndex": 3,
+                            "endColumnIndex": 4
+                        }],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "NUMBER_LESS_THAN_OR_EQUAL",
+                                "values": [{"userEnteredValue": "4"}]
+                            },
+                            "format": {
+                                "backgroundColor": {"red": 0.99, "green": 0.91, "blue": 0.90},
+                                "textFormat": {"foregroundColor": {"red": 0.77, "green": 0.12, "blue": 0.12}, "bold": True}
+                            }
+                        }
+                    },
+                    "index": 2
+                }
+            },
+            # 13. Conditional Formatting: Zebra Striping (Even data rows)
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [{
+                            "sheetId": sheet_id_0,
+                            "startRowIndex": 1,
+                            "endRowIndex": 1000,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": 13
+                        }],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "CUSTOM_FORMAT_RULE",
+                                "values": [{"userEnteredValue": "=MOD(ROW(), 2) = 0"}]
+                            },
+                            "format": {
+                                "backgroundColor": {"red": 0.97, "green": 0.98, "blue": 0.99}
+                            }
+                        }
+                    },
+                    "index": 3
                 }
             }
         ]
@@ -729,11 +896,11 @@ def format_google_sheet(spreadsheet):
                 }
             })
             
-        # Execute batch update for sheet 1
+        # Execute batch update for sheet 0
         spreadsheet.batch_update({"requests": requests_0})
         logger.info("Formatted primary SaaS Incubation worksheet.")
         
-        # --- 2. Format Worksheet 2 (Query History Sheet) ---
+        # --- 2. Format Worksheet 1 (Query History Sheet) ---
         try:
             worksheet_1 = spreadsheet.worksheet("Query History")
             sheet_id_1 = worksheet_1.id
@@ -744,7 +911,13 @@ def format_google_sheet(spreadsheet):
             }
             
             requests_1 = [
-                # Freeze first row
+                # 1. Clear all existing conditional formatting rules to avoid stacking
+                {
+                    "clearConditionalFormatRules": {
+                        "sheetId": sheet_id_1
+                    }
+                },
+                # 2. Freeze first row
                 {
                     "updateSheetProperties": {
                         "properties": {
@@ -756,7 +929,7 @@ def format_google_sheet(spreadsheet):
                         "fields": "gridProperties.frozenRowCount"
                     }
                 },
-                # Set basic filter
+                # 3. Set basic filter
                 {
                     "setBasicFilter": {
                         "filter": {
@@ -769,7 +942,7 @@ def format_google_sheet(spreadsheet):
                         }
                     }
                 },
-                # Style header row (grey background, white bold text, centered)
+                # 4. Style header row (grey background, white bold text, centered, height: 45px)
                 {
                     "repeatCell": {
                         "range": {
@@ -782,7 +955,7 @@ def format_google_sheet(spreadsheet):
                         "cell": {
                             "userEnteredFormat": {
                                 "backgroundColor": {
-                                    "red": 0.200,  # #334155
+                                    "red": 0.200,
                                     "green": 0.255,
                                     "blue": 0.333
                                 },
@@ -798,13 +971,14 @@ def format_google_sheet(spreadsheet):
                                 },
                                 "horizontalAlignment": "CENTER",
                                 "verticalAlignment": "MIDDLE",
-                                "wrapStrategy": "WRAP"
+                                "wrapStrategy": "WRAP",
+                                "borders": border_format
                             }
                         },
-                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)"
+                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy,borders)"
                     }
                 },
-                # Style data cells (font: Inter, size: 10, wrap: WRAP)
+                # 5. Style data cells (font: Inter, size: 10, wrap: WRAP, borders: Solid)
                 {
                     "repeatCell": {
                         "range": {
@@ -821,10 +995,65 @@ def format_google_sheet(spreadsheet):
                                     "fontSize": 10
                                 },
                                 "verticalAlignment": "MIDDLE",
-                                "wrapStrategy": "WRAP"
+                                "wrapStrategy": "WRAP",
+                                "borders": border_format
                             }
                         },
-                        "fields": "userEnteredFormat(textFormat,verticalAlignment,wrapStrategy)"
+                        "fields": "userEnteredFormat(textFormat,verticalAlignment,wrapStrategy,borders)"
+                    }
+                },
+                # 6. Set Header row height to 45px
+                {
+                    "updateDimensionProperties": {
+                        "range": {
+                            "sheetId": sheet_id_1,
+                            "dimension": "ROWS",
+                            "startIndex": 0,
+                            "endIndex": 1
+                        },
+                        "properties": {
+                            "pixelSize": 45
+                        },
+                        "fields": "pixelSize"
+                    }
+                },
+                # 7. Set Data row heights to 35px
+                {
+                    "updateDimensionProperties": {
+                        "range": {
+                            "sheetId": sheet_id_1,
+                            "dimension": "ROWS",
+                            "startIndex": 1,
+                            "endIndex": 1000
+                        },
+                        "properties": {
+                            "pixelSize": 35
+                        },
+                        "fields": "pixelSize"
+                    }
+                },
+                # 8. Conditional Formatting: Zebra Striping (Even data rows)
+                {
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [{
+                                "sheetId": sheet_id_1,
+                                "startRowIndex": 1,
+                                "endRowIndex": 1000,
+                                "startColumnIndex": 0,
+                                "endColumnIndex": 2
+                            }],
+                            "booleanRule": {
+                                "condition": {
+                                    "type": "CUSTOM_FORMAT_RULE",
+                                    "values": [{"userEnteredValue": "=MOD(ROW(), 2) = 0"}]
+                                },
+                                "format": {
+                                    "backgroundColor": {"red": 0.97, "green": 0.98, "blue": 0.99}
+                                }
+                            }
+                        },
+                        "index": 0
                     }
                 }
             ]
@@ -846,6 +1075,7 @@ def format_google_sheet(spreadsheet):
                     }
                 })
                 
+            # Execute batch update for sheet 1
             spreadsheet.batch_update({"requests": requests_1})
             logger.info("Formatted 'Query History' worksheet.")
             
@@ -898,6 +1128,7 @@ def main():
 
     # Step 1: Open Target Google Sheet, Retrieve Existing URLs, and Query History
     existing_urls = set()
+    existing_snippets = []
     worksheet = None
     recent_queries = []
     history_worksheet = None
@@ -918,11 +1149,13 @@ def main():
             worksheet = spreadsheet.get_worksheet(0)
             existing_rows = worksheet.get_all_values()
             
-            # If sheet has values, collect URLs from Column C (index 2) to skip duplicates
+            # If sheet has values, collect URLs from Column C (index 2) and snippets from Column B (index 1) to skip duplicates
             if existing_rows:
                 for row in existing_rows[1:]: # skip header row
                     if len(row) > 2:
                         existing_urls.add(normalize_url(row[2]))
+                    if len(row) > 1:
+                        existing_snippets.append(row[1])
             else:
                 # Completely empty sheet: write headers first
                 headers = [
@@ -964,6 +1197,7 @@ def main():
         url = item["url"]
         norm_url = normalize_url(url)
         
+        # 1. Exact URL duplicate check
         if norm_url in existing_urls:
             logger.info(f"Skipping duplicate URL already present in Google Sheet: {url}")
             continue
@@ -971,7 +1205,20 @@ def main():
         if norm_url in seen_in_batch:
             continue
             
+        # 2. Textual Jaccard similarity duplicate check
+        snippet = item["snippet"]
+        is_similar = False
+        for old_snippet in existing_snippets:
+            sim = calculate_jaccard_similarity(snippet, old_snippet)
+            if sim > 0.6:
+                logger.info(f"Skipping snippet too similar to existing sheet entry (similarity={sim:.2f}): '{snippet[:50]}...'")
+                is_similar = True
+                break
+        if is_similar:
+            continue
+            
         seen_in_batch.add(norm_url)
+        existing_snippets.append(snippet)  # Prevent duplicates within the same batch run
         new_unprocessed_items.append(item)
         
     logger.info(f"Found {len(new_unprocessed_items)} new unique inputs to evaluate.")
