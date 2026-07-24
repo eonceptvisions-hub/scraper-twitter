@@ -288,10 +288,17 @@ def log_query(worksheet, query: str):
         logger.error(f"Failed to log query to history sheet: {e}")
 
 
-def generate_daily_dork_query(client: genai.Client, recent_queries: list, model_name: str = "gemini-2.5-flash") -> str:
+def generate_daily_dork_query(
+    client: genai.Client,
+    recent_queries: list,
+    model_name: str = "gemini-2.5-flash",
+    max_retries: int = 3,
+    retry_interval: int = 60
+) -> str:
     """
     Asks Gemini to generate a creative, advanced Google Search dork query targeting x.com
     to find SaaS/business complaints, ensuring it does not repeat queries from the last 30 days.
+    Includes retry logic with backoff to handle transient API errors.
     """
     recent_queries_str = "\n".join([f"- {q}" for q in recent_queries]) if recent_queries else "None"
     
@@ -312,32 +319,47 @@ def generate_daily_dork_query(client: genai.Client, recent_queries: list, model_
     Output ONLY the query string, inside a code block or as plain text. Do not include quotes or any introductory/conversational text.
     """
     
-    logger.info("Generating dynamic dork query via Gemini...")
-    config = types.GenerateContentConfig(
-        temperature=0.7 # higher temperature for creative query generation
-    )
-    response = client.models.generate_content(
-        model=model_name,
-        contents=prompt,
-        config=config
-    )
-    
-    query = response.text.strip()
-    
-    # Strip markdown code block wrappers if Gemini returns them
-    if query.startswith("```"):
-        lines = query.split("\n")
-        if len(lines) > 2:
-            query = "\n".join(lines[1:-1]).strip()
-        else:
-            query = query.replace("```", "").strip()
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info(f"Generating dynamic dork query via Gemini (Attempt {attempt}/{max_retries})...")
+            config = types.GenerateContentConfig(
+                temperature=0.7 # higher temperature for creative query generation
+            )
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=config
+            )
             
-    # Remove surrounding double quotes if present
-    if query.startswith('"') and query.endswith('"'):
-        query = query[1:-1].strip()
-        
-    logger.info(f"Generated dynamic query: '{query}'")
-    return query
+            query = response.text.strip()
+            
+            # Strip markdown code block wrappers if Gemini returns them
+            if query.startswith("```"):
+                lines = query.split("\n")
+                if len(lines) > 2:
+                    query = "\n".join(lines[1:-1]).strip()
+                else:
+                    query = query.replace("```", "").strip()
+                    
+            # Remove surrounding double quotes if present
+            if query.startswith('"') and query.endswith('"'):
+                query = query[1:-1].strip()
+                
+            logger.info(f"Generated dynamic query: '{query}'")
+            return query
+            
+        except Exception as e:
+            error_msg = str(e)
+            is_retriable = is_api_error_retriable(error_msg)
+            if is_retriable and attempt < max_retries:
+                logger.warning(
+                    f"Query generation attempt {attempt}/{max_retries} failed with retriable error: {error_msg}. "
+                    f"Retrying in {retry_interval} seconds..."
+                )
+                time.sleep(retry_interval)
+            else:
+                logger.error(f"Failed to generate daily query: {error_msg}")
+                raise
 
 
 
@@ -465,7 +487,7 @@ def is_api_error_retriable(error_str: str) -> bool:
     retriable_keywords = [
         "503", "service unavailable", "temporarily unavailable",
         "500", "internal server error", "429", "rate limit",
-        "timeout", "connection reset", "temporarily"
+        "timeout", "connection reset", "temporarily", "unavailable"
     ]
     return any(keyword in error_str_lower for keyword in retriable_keywords)
 
