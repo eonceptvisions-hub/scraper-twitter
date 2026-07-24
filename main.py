@@ -79,7 +79,7 @@ class BusinessConceptAnalysis(BaseModel):
     saas_product_concept: SaasProductConcept = Field(description="The proposed SaaS product concept details.")
     market_analysis: MarketAnalysis = Field(description="Market and competitor analysis details.")
     target_audience: str = Field(description="The exact professional archetype / target audience willing to pay for this solution.")
-    plain_english_explanation: str = Field(description="A detailed explanation of the SaaS product concept in plain English. Explain the idea and how it works in simple, everyday terms. Use absolu[...]
+    plain_english_explanation: str = Field(description="A detailed explanation of the SaaS product concept in plain English. Explain the idea and how it works in simple, everyday terms. Use absolutely no tech jargon, coding terminology, or business/marketing buzzwords.")
 
 
 
@@ -139,7 +139,7 @@ def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
     if "compile weekly status reports" in snippet:
         return BusinessConceptAnalysis(
             feasibility_score=8,
-            feasibility_rationale="Highly feasible because weekly reports rely on structured data sources like Jira/GitHub APIs. The friction lies in building robust API integrations and custom l[...]
+            feasibility_rationale="Highly feasible because weekly reports rely on structured data sources like Jira/GitHub APIs. The friction lies in building robust API integrations and custom layout templates.",
             saas_product_concept=SaasProductConcept(
                 name="ReportFlow AI",
                 one_liner="Automate client reporting by compiling Jira, GitHub, and Slack updates into gorgeous PDFs in one click.",
@@ -155,12 +155,12 @@ def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
                 our_unfair_moat="Direct sync with developer commits and design updates to generate technical summaries without manual writing."
             ),
             target_audience="SaaS Product Managers & Agency Account Managers",
-            plain_english_explanation="A tool that connects to your team's work accounts like Slack, GitHub, and Jira, collects what everyone did over the week, and automatically packages it into[...]
+            plain_english_explanation="A tool that connects to your team's work accounts like Slack, GitHub, and Jira, collects what everyone did over the week, and automatically packages it into a clean, easy-to-read report you can send to your clients with one click."
         )
     elif "RBAC and user permission" in snippet:
         return BusinessConceptAnalysis(
             feasibility_score=9,
-            feasibility_rationale="Very feasible because authorization frameworks are common, but setting them up securely takes time. Developers will pay for ready-to-use SDKs that work with maj[...]
+            feasibility_rationale="Very feasible because authorization frameworks are common, but setting them up securely takes time. Developers will pay for ready-to-use SDKs that work with major frameworks.",
             saas_product_concept=SaasProductConcept(
                 name="PermitLock",
                 one_liner="Drop-in RBAC and fine-grained permissions SDK that deploys in under 5 minutes.",
@@ -176,7 +176,7 @@ def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
                 our_unfair_moat="Instant schema generation from simple English system descriptions (e.g. 'Admins can delete, Editors can edit')."
             ),
             target_audience="Full-Stack Developers and SaaS Tech Leads",
-            plain_english_explanation="A pre-made security kit for software creators that lets them add user logins and custom permission settings to their systems in just a few minutes, includin[...]
+            plain_english_explanation="A pre-made security kit for software creators that lets them add user logins and custom permission settings to their systems in just a few minutes, including a simple screen where administrators can decide who is allowed to view, edit, or delete items without needing to write code."
         )
     else:
         return BusinessConceptAnalysis(
@@ -197,7 +197,7 @@ def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
                 our_unfair_moat="Specifically tuned models trained on top-converting SaaS product hunt launch graphics and dark-mode templates."
             ),
             target_audience="SaaS Solo Founders & Bootstrapped Marketers",
-            plain_english_explanation="An automated design helper that takes a simple text description of a product launch or promotion and instantly generates matching social media images using [...]
+            plain_english_explanation="An automated design helper that takes a simple text description of a product launch or promotion and instantly generates matching social media images using your brand colors, then schedules them to be published automatically."
         )
 
 
@@ -268,7 +268,7 @@ def generate_daily_dork_query(client: genai.Client, recent_queries: list, model_
     1. The query must start with 'site:x.com'.
     2. Focus on phrases indicating frustration, friction, or desire (e.g., "takes me hours to", "wish there was a tool", "why is it so hard to", "manual spreadsheet", "takes forever to").
     3. Target SaaS, software, startup, or business niches (e.g., marketing, finance, sales, operations, CRM, customer service, dev tools).
-    4. MUST include negative keywords to filter out jobs, hiring, newsletters, courses, templates, ads, spam, and promotions. Examples: -job -hiring -recruiting -course -newsletter -sponsor -ad -[...]
+    4. MUST include negative keywords to filter out jobs, hiring, newsletters, courses, templates, ads, spam, and promotions. Examples: -job -hiring -recruiting -course -newsletter -sponsor -ad -giveaway -thread.
     5. Vary the niche (e.g., if recent queries targeted marketing or finance, target developer tooling, HR, legal, or customer support today).
     
     Output ONLY the query string, inside a code block or as plain text. Do not include quotes or any introductory/conversational text.
@@ -317,7 +317,7 @@ def clean_google_snippet(snippet: str) -> str:
     # - "3 days ago ... "
     # - "12h ago ... "
     # - "2024-05-12 ... "
-    date_pattern = r"^((?:[A-Za-z]{3}\s+\d{1,2},\s+\d{4})|(?:\d{1,2}\s+[A-Za-z]{3,}\s+\d{4})|(?:\d+\s+(?:days?|hours?|mins?|minutes?|secs?|seconds?)\s+ago)|(?:\d{4}-\d{2}-\d{2})|(?:\d{2}/\d{2}/\d[...]
+    date_pattern = r"^((?:[A-Za-z]{3}\s+\d{1,2},\s+\d{4})|(?:\d{1,2}\s+[A-Za-z]{3,}\s+\d{4})|(?:\d+\s+(?:days?|hours?|mins?|minutes?|secs?|seconds?)\s+ago)|(?:\d{4}-\d{2}-\d{2})|(?:\d{2}/\d{2}/\d{4}))\s*(?:\.{3,}|…)\s*(.*)"
     prefix_match = re.match(date_pattern, snippet)
     if prefix_match:
         snippet = prefix_match.group(2)
