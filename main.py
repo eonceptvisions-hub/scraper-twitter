@@ -80,6 +80,10 @@ class BusinessConceptAnalysis(BaseModel):
     market_analysis: MarketAnalysis = Field(description="Market and competitor analysis details.")
     target_audience: str = Field(description="The exact professional archetype / target audience willing to pay for this solution.")
     plain_english_explanation: str = Field(description="A detailed explanation of the SaaS product concept in plain English. Explain the idea and how it works in simple, everyday terms. Use absolutely no tech jargon, coding terminology, or business/marketing buzzwords.")
+    has_existing_alternatives: bool = Field(description="True if there are already established direct SaaS competitors or free tools that solve this exact problem.")
+    demand_urgency_score: int = Field(description="Quantifiable rating (1 to 10) of how critical the pain point is. 10 = loses money/saves hours daily, 1 = minor visual/annoyance issue.")
+    mvp_complexity_score: int = Field(description="Quantifiable complexity score (1 to 10) to build the MVP. 1 = simple landing page/wrapper, 10 = complex proprietary AI training/heavy infrastructure.")
+    viability_rating: int = Field(description="Overall business viability and commercial appeal rating (1 to 10) based on low MVP complexity, high demand urgency, and weak existing alternatives.")
 
 
 
@@ -177,7 +181,11 @@ def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
                 our_unfair_moat="Direct sync with developer commits and design updates to generate technical summaries without manual writing."
             ),
             target_audience="SaaS Product Managers & Agency Account Managers",
-            plain_english_explanation="A tool that connects to your team's work accounts like Slack, GitHub, and Jira, collects what everyone did over the week, and automatically packages it into a clean, easy-to-read report you can send to your clients with one click."
+            plain_english_explanation="A tool that connects to your team's work accounts like Slack, GitHub, and Jira, collects what everyone did over the week, and automatically packages it into a clean, easy-to-read report you can send to your clients with one click.",
+            has_existing_alternatives=True,
+            demand_urgency_score=8,
+            mvp_complexity_score=4,
+            viability_rating=7
         )
     elif "RBAC and user permission" in snippet:
         return BusinessConceptAnalysis(
@@ -198,7 +206,11 @@ def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
                 our_unfair_moat="Instant schema generation from simple English system descriptions (e.g. 'Admins can delete, Editors can edit')."
             ),
             target_audience="Full-Stack Developers and SaaS Tech Leads",
-            plain_english_explanation="A pre-made security kit for software creators that lets them add user logins and custom permission settings to their systems in just a few minutes, including a simple screen where administrators can decide who is allowed to view, edit, or delete items without needing to write code."
+            plain_english_explanation="A pre-made security kit for software creators that lets them add user logins and custom permission settings to their systems in just a few minutes, including a simple screen where administrators can decide who is allowed to view, edit, or delete items without needing to write code.",
+            has_existing_alternatives=True,
+            demand_urgency_score=9,
+            mvp_complexity_score=5,
+            viability_rating=8
         )
     else:
         return BusinessConceptAnalysis(
@@ -219,7 +231,11 @@ def get_mock_analysis(snippet: str) -> BusinessConceptAnalysis:
                 our_unfair_moat="Specifically tuned models trained on top-converting SaaS product hunt launch graphics and dark-mode templates."
             ),
             target_audience="SaaS Solo Founders & Bootstrapped Marketers",
-            plain_english_explanation="An automated design helper that takes a simple text description of a product launch or promotion and instantly generates matching social media images using your brand colors, then schedules them to be published automatically."
+            plain_english_explanation="An automated design helper that takes a simple text description of a product launch or promotion and instantly generates matching social media images using your brand colors, then schedules them to be published automatically.",
+            has_existing_alternatives=True,
+            demand_urgency_score=7,
+            mvp_complexity_score=6,
+            viability_rating=6
         )
 
 
@@ -479,13 +495,14 @@ def analyze_with_gemini_with_retry(
             We have extracted the following raw user pain point/complaint from X (Twitter):
             "{snippet}"
             
-            Using Google Search, research the market to identify:
-            1. If this is a genuine, solvable problem in the modern world.
-            2. Direct competitors or existing SaaS tools that address this.
-            3. The technical feasibility of building a solution.
-            4. An unfair moat we could build to beat incumbents.
+            Using Google Search, perform market research and validation guided by these principles:
             
-            Provide your analysis as a comprehensive, well-structured text summary.
+            1. THINK BEFORE CODING (Alternative Verification): Research if this exact problem is already solved. Find actual products, SaaS tools, open-source projects, or common workarounds that people use today.
+            2. SIMPLICITY FIRST (MVP Scoping): Focus on the simplest potential software solution that directly solves this core pain point.
+            3. SURGICAL CHANGES (Target Audience): Identify the specific professional archetype or user segment that experiences this friction most severely.
+            4. GOAL-DRIVEN EXECUTION (Quantification): Evaluate how painful and frequent the problem is (demand urgency) and the complexity of building a barebones MVP.
+            
+            Provide a comprehensive, well-structured text summary detailing the existing alternatives, technical feasibility, core MVP scope, and competitive gaps.
             """
             
             logger.info(f"Step 1 (Attempt {attempt}/{max_retries}): Running Google Search Grounding research...")
@@ -515,7 +532,13 @@ def analyze_with_gemini_with_retry(
             Market Research Summary:
             {research_summary}
             
-            Based on this research, formulate a polished business concept. Output exactly matching the required JSON schema.
+            Based on the research, formulate a polished business concept mapping directly to the required JSON schema:
+            
+            - HAS_EXISTING_ALTERNATIVES: Set to True if established direct competitors or utilities were found during research.
+            - DEMAND_URGENCY_SCORE: Rate 1 to 10. 10 = massive daily time/revenue loss; 1 = minor inconvenience.
+            - MVP_COMPLEXITY_SCORE: Rate 1 to 10. 1 = simple landing page or prompt wrapper; 10 = heavy infrastructure or complex training.
+            - VIABILITY_RATING: Rate 1 to 10. Compute based on low complexity, high urgency, and gaps in existing solutions.
+            - SAAS_PRODUCT_CONCEPT: Propose a simple, surgical MVP concept matching the research.
             """
             
             logger.info(f"Step 2 (Attempt {attempt}/{max_retries}): Structuring business concept with Pydantic schema...")
@@ -575,7 +598,11 @@ def map_analysis_to_row(raw_tweet: str, url: str, analysis: BusinessConceptAnaly
         competitors_str,
         analysis.market_analysis.our_unfair_moat,
         analysis.target_audience,
-        analysis.plain_english_explanation
+        analysis.plain_english_explanation,
+        "Yes" if analysis.has_existing_alternatives else "No",
+        analysis.demand_urgency_score,
+        analysis.mvp_complexity_score,
+        analysis.viability_rating
     ]
     return row
 
@@ -613,7 +640,11 @@ def format_google_sheet(spreadsheet):
             9: 180, # Competitors
             10: 280, # Unfair Moat
             11: 180, # Target Audience
-            12: 320  # Plain English Explanation
+            12: 320, # Plain English Explanation
+            13: 150, # Has Existing Alterns?
+            14: 120, # Demand Urgency
+            15: 120, # MVP Complexity
+            16: 120  # Viability Rating
         }
         
         requests_0 = [
@@ -635,7 +666,7 @@ def format_google_sheet(spreadsheet):
                     "fields": "gridProperties.frozenRowCount"
                 }
             },
-            # 3. Set basic filter across headers
+            # 3. Set basic filter across headers (all 17 columns)
             {
                 "setBasicFilter": {
                     "filter": {
@@ -643,7 +674,7 @@ def format_google_sheet(spreadsheet):
                             "sheetId": sheet_id_0,
                             "startRowIndex": 0,
                             "startColumnIndex": 0,
-                            "endColumnIndex": 13
+                            "endColumnIndex": 17
                         }
                     }
                 }
@@ -656,7 +687,7 @@ def format_google_sheet(spreadsheet):
                         "startRowIndex": 0,
                         "endRowIndex": 1,
                         "startColumnIndex": 0,
-                        "endColumnIndex": 13
+                        "endColumnIndex": 17
                     },
                     "cell": {
                         "userEnteredFormat": {
@@ -692,7 +723,7 @@ def format_google_sheet(spreadsheet):
                         "startRowIndex": 1,
                         "endRowIndex": 1000,
                         "startColumnIndex": 0,
-                        "endColumnIndex": 13
+                        "endColumnIndex": 17
                     },
                     "cell": {
                         "userEnteredFormat": {
@@ -708,7 +739,7 @@ def format_google_sheet(spreadsheet):
                     "fields": "userEnteredFormat(textFormat,verticalAlignment,wrapStrategy,borders)"
                 }
             },
-            # 6. Center align Feasibility score
+            # 6. Center align Feasibility score, Alternatives status, and validation ratings
             {
                 "repeatCell": {
                     "range": {
@@ -717,6 +748,23 @@ def format_google_sheet(spreadsheet):
                         "endRowIndex": 1000,
                         "startColumnIndex": 3,
                         "endColumnIndex": 4
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "horizontalAlignment": "CENTER"
+                        }
+                    },
+                    "fields": "userEnteredFormat(horizontalAlignment)"
+                }
+            },
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id_0,
+                        "startRowIndex": 1,
+                        "endRowIndex": 1000,
+                        "startColumnIndex": 13,
+                        "endColumnIndex": 17
                     },
                     "cell": {
                         "userEnteredFormat": {
@@ -853,7 +901,184 @@ def format_google_sheet(spreadsheet):
                     "index": 2
                 }
             },
-            # 13. Conditional Formatting: Zebra Striping (Even data rows)
+            # 13. Conditional Formatting: Demand Urgency & Viability Rating - High (8-10)
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": sheet_id_0,
+                                "startRowIndex": 1,
+                                "endRowIndex": 1000,
+                                "startColumnIndex": 14, # Demand Urgency
+                                "endColumnIndex": 15
+                            },
+                            {
+                                "sheetId": sheet_id_0,
+                                "startRowIndex": 1,
+                                "endRowIndex": 1000,
+                                "startColumnIndex": 16, # Viability Rating
+                                "endColumnIndex": 17
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "NUMBER_GREATER_THAN_OR_EQUAL",
+                                "values": [{"userEnteredValue": "8"}]
+                            },
+                            "format": {
+                                "backgroundColor": {"red": 0.90, "green": 0.96, "blue": 0.92},
+                                "textFormat": {"foregroundColor": {"red": 0.07, "green": 0.45, "blue": 0.20}, "bold": True}
+                            }
+                        }
+                    },
+                    "index": 3
+                }
+            },
+            # 14. Conditional Formatting: Demand Urgency & Viability Rating - Medium (5-7)
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": sheet_id_0,
+                                "startRowIndex": 1,
+                                "endRowIndex": 1000,
+                                "startColumnIndex": 14,
+                                "endColumnIndex": 15
+                            },
+                            {
+                                "sheetId": sheet_id_0,
+                                "startRowIndex": 1,
+                                "endRowIndex": 1000,
+                                "startColumnIndex": 16,
+                                "endColumnIndex": 17
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "NUMBER_BETWEEN",
+                                "values": [{"userEnteredValue": "5"}, {"userEnteredValue": "7"}]
+                            },
+                            "format": {
+                                "backgroundColor": {"red": 1.0, "green": 0.97, "blue": 0.88},
+                                "textFormat": {"foregroundColor": {"red": 0.69, "green": 0.38, "blue": 0.0}, "bold": True}
+                            }
+                        }
+                    },
+                    "index": 4
+                }
+            },
+            # 15. Conditional Formatting: Demand Urgency & Viability Rating - Low (1-4)
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": sheet_id_0,
+                                "startRowIndex": 1,
+                                "endRowIndex": 1000,
+                                "startColumnIndex": 14,
+                                "endColumnIndex": 15
+                            },
+                            {
+                                "sheetId": sheet_id_0,
+                                "startRowIndex": 1,
+                                "endRowIndex": 1000,
+                                "startColumnIndex": 16,
+                                "endColumnIndex": 17
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "NUMBER_LESS_THAN_OR_EQUAL",
+                                "values": [{"userEnteredValue": "4"}]
+                            },
+                            "format": {
+                                "backgroundColor": {"red": 0.99, "green": 0.91, "blue": 0.90},
+                                "textFormat": {"foregroundColor": {"red": 0.77, "green": 0.12, "blue": 0.12}, "bold": True}
+                            }
+                        }
+                    },
+                    "index": 5
+                }
+            },
+            # 16. Conditional Formatting: MVP Complexity Score - High Complexity (8-10) -> Highlight RED
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [{
+                            "sheetId": sheet_id_0,
+                            "startRowIndex": 1,
+                            "endRowIndex": 1000,
+                            "startColumnIndex": 15, # MVP Complexity
+                            "endColumnIndex": 16
+                        }],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "NUMBER_GREATER_THAN_OR_EQUAL",
+                                "values": [{"userEnteredValue": "8"}]
+                            },
+                            "format": {
+                                "backgroundColor": {"red": 0.99, "green": 0.91, "blue": 0.90},
+                                "textFormat": {"foregroundColor": {"red": 0.77, "green": 0.12, "blue": 0.12}, "bold": True}
+                            }
+                        }
+                    },
+                    "index": 6
+                }
+            },
+            # 17. Conditional Formatting: MVP Complexity Score - Medium Complexity (5-7) -> Highlight YELLOW
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [{
+                            "sheetId": sheet_id_0,
+                            "startRowIndex": 1,
+                            "endRowIndex": 1000,
+                            "startColumnIndex": 15,
+                            "endColumnIndex": 16
+                        }],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "NUMBER_BETWEEN",
+                                "values": [{"userEnteredValue": "5"}, {"userEnteredValue": "7"}]
+                            },
+                            "format": {
+                                "backgroundColor": {"red": 1.0, "green": 0.97, "blue": 0.88},
+                                "textFormat": {"foregroundColor": {"red": 0.69, "green": 0.38, "blue": 0.0}, "bold": True}
+                            }
+                        }
+                    },
+                    "index": 7
+                }
+            },
+            # 18. Conditional Formatting: MVP Complexity Score - Low Complexity (1-4) -> Highlight GREEN (Preferred)
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [{
+                            "sheetId": sheet_id_0,
+                            "startRowIndex": 1,
+                            "endRowIndex": 1000,
+                            "startColumnIndex": 15,
+                            "endColumnIndex": 16
+                        }],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "NUMBER_LESS_THAN_OR_EQUAL",
+                                "values": [{"userEnteredValue": "4"}]
+                            },
+                            "format": {
+                                "backgroundColor": {"red": 0.90, "green": 0.96, "blue": 0.92},
+                                "textFormat": {"foregroundColor": {"red": 0.07, "green": 0.45, "blue": 0.20}, "bold": True}
+                            }
+                        }
+                    },
+                    "index": 8
+                }
+            },
+            # 19. Conditional Formatting: Zebra Striping (Even data rows) (all 17 columns)
             {
                 "addConditionalFormatRule": {
                     "rule": {
@@ -862,7 +1087,7 @@ def format_google_sheet(spreadsheet):
                             "startRowIndex": 1,
                             "endRowIndex": 1000,
                             "startColumnIndex": 0,
-                            "endColumnIndex": 13
+                            "endColumnIndex": 17
                         }],
                         "booleanRule": {
                             "condition": {
@@ -874,7 +1099,7 @@ def format_google_sheet(spreadsheet):
                             }
                         }
                     },
-                    "index": 3
+                    "index": 9
                 }
             }
         ]
@@ -1161,7 +1386,8 @@ def main():
                 headers = [
                     "Timestamp", "Raw Tweet", "X URL", "Feasibility (1-10)", "Rationale",
                     "Product Name", "Product Concept", "Core Features", "Tech Stack",
-                    "Competitors", "Unfair Moat", "Target Audience", "Plain English Explanation"
+                    "Competitors", "Unfair Moat", "Target Audience", "Plain English Explanation",
+                    "Has Existing Alterns? (Yes/No)", "Demand Urgency (1-10)", "MVP Complexity (1-10)", "Viability Rating (1-10)"
                 ]
                 worksheet.append_row(headers)
                 logger.info("Initialized Google Sheet with default columns.")
