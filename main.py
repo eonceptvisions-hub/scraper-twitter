@@ -298,7 +298,7 @@ def generate_daily_dork_query(
 ) -> str:
     """
     Asks LLM (ChatGPT or Gemini) to generate a creative, advanced Google Search dork query targeting x.com.
-    Uses gpt-5.4-mini for ChatGPT and gemini-3.5-flash for Gemini.
+    Uses gpt-4o-mini for ChatGPT and gemini-3.5-flash for Gemini.
     """
     recent_queries_str = "\n".join([f"- {q}" for q in recent_queries]) if recent_queries else "None"
     
@@ -322,9 +322,9 @@ def generate_daily_dork_query(
     for attempt in range(1, max_retries + 1):
         try:
             if client_type == "openai":
-                logger.info(f"Generating dynamic dork query via ChatGPT gpt-5.4-mini (Attempt {attempt}/{max_retries})...")
+                logger.info(f"Generating dynamic dork query via ChatGPT gpt-4o-mini (Attempt {attempt}/{max_retries})...")
                 response = client.chat.completions.create(
-                    model="gpt-5.4-mini",
+                    model="gpt-4o-mini",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.7
                 )
@@ -537,7 +537,7 @@ def analyze_with_llm_with_retry(
             if client_type == "openai":
                 logger.info(f"Step 1 (Attempt {attempt}/{max_retries}): Running ChatGPT research...")
                 research_response = client.chat.completions.create(
-                    model="gpt-5.4-mini",
+                    model="gpt-4o-mini",
                     messages=[{"role": "user", "content": research_prompt}],
                     temperature=0.2
                 )
@@ -581,7 +581,7 @@ def analyze_with_llm_with_retry(
             if client_type == "openai":
                 logger.info(f"Step 2 (Attempt {attempt}/{max_retries}): Structuring business concept with Pydantic schema (ChatGPT)...")
                 response = client.beta.chat.completions.parse(
-                    model="gpt-5.4-mini",
+                    model="gpt-4o-mini",
                     messages=[{"role": "user", "content": structure_prompt}],
                     response_format=BusinessConceptAnalysis,
                     temperature=0.2
@@ -1420,7 +1420,7 @@ def main():
                 logger.info("Attempting to initialize and verify OpenAI Client...")
                 test_client = OpenAI(api_key=chatgpt_key)
                 test_client.chat.completions.create(
-                    model="gpt-5.4-mini",
+                    model="gpt-4o-mini",
                     messages=[{"role": "user", "content": "ping"}],
                     max_tokens=1,
                     timeout=5.0
